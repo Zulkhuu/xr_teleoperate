@@ -27,19 +27,30 @@ logger_mp = logging_mp.getLogger(__name__)
 Dex3_Num_Motors = 7
 kTopicDex3LeftCommand = "rt/dex3/left/cmd"
 kTopicDex3RightCommand = "rt/dex3/right/cmd"
-kTopicDex3LeftState = "rt/dex3/left/state"
-kTopicDex3RightState = "rt/dex3/right/state"
+kTopicDex3LeftState = "rt/lf/dex3/left/state"
+kTopicDex3RightState = "rt/lf/dex3/right/state"
+
+DEX3_LEFT_OPEN_Q = np.zeros(Dex3_Num_Motors)
+DEX3_RIGHT_OPEN_Q = np.zeros(Dex3_Num_Motors)
+
+# Conservative grasp presets for controller-trigger binary open/close mode.
+# Order:
+#   left:  thumb0, thumb1, thumb2, middle0, middle1, index0, index1
+#   right: thumb0, thumb1, thumb2, index0, index1, middle0, middle1
+DEX3_LEFT_CLOSE_Q = np.array([0.25, 0.45, 0.75, -0.65, -0.75, -0.65, -0.75])
+DEX3_RIGHT_CLOSE_Q = np.array([-0.25, -0.45, -0.75, 0.65, 0.75, 0.65, 0.75])
+DEX3_BINARY_MAX_Q_STEP = 0.02
 
 
 class Dex3_1_Controller:
     def __init__(self, left_hand_array_in, right_hand_array_in, dual_hand_data_lock = None, dual_hand_state_array_out = None,
-                       dual_hand_action_array_out = None, fps = 100.0, Unit_Test = False, simulation_mode = False):
+                       dual_hand_action_array_out = None, fps = 100.0, Unit_Test = False, simulation_mode = False, control_mode = "hand"):
         """
         [note] A *_array type parameter requires using a multiprocessing Array, because it needs to be passed to the internal child process
 
-        left_hand_array_in: [input] Left hand skeleton data (required from XR device) to hand_ctrl.control_process
+        left_hand_array_in: [input] Left hand skeleton data in hand mode, or a 0/1 grasp Value in binary mode.
 
-        right_hand_array_in: [input] Right hand skeleton data (required from XR device) to hand_ctrl.control_process
+        right_hand_array_in: [input] Right hand skeleton data in hand mode, or a 0/1 grasp Value in binary mode.
 
         dual_hand_data_lock: Data synchronization lock for dual_hand_state_array and dual_hand_action_array
 
@@ -52,16 +63,25 @@ class Dex3_1_Controller:
         Unit_Test: Whether to enable unit testing
 
         simulation_mode: Whether to use simulation mode (default is False, which means using real robot)
+
+        control_mode: "hand" for XR hand retargeting, "binary" for controller-trigger open/close.
         """
         logger_mp.info("Initialize Dex3_1_Controller...")
 
         self.fps = fps
         self.Unit_Test = Unit_Test
         self.simulation_mode = simulation_mode
-        if not self.Unit_Test:
-            self.hand_retargeting = HandRetargeting(HandType.UNITREE_DEX3)
+        self.control_mode = control_mode
+        if self.control_mode not in ("hand", "binary"):
+            raise ValueError(f"Unsupported Dex3 control_mode: {self.control_mode}")
+
+        if self.control_mode == "hand":
+            if not self.Unit_Test:
+                self.hand_retargeting = HandRetargeting(HandType.UNITREE_DEX3)
+            else:
+                self.hand_retargeting = HandRetargeting(HandType.UNITREE_DEX3_Unit_Test)
         else:
-            self.hand_retargeting = HandRetargeting(HandType.UNITREE_DEX3_Unit_Test)
+            self.hand_retargeting = None
 
         # initialize handcmd publisher and handstate subscriber
         self.LeftHandCmb_publisher = ChannelPublisher(kTopicDex3LeftCommand, HandCmd_)
@@ -77,21 +97,29 @@ class Dex3_1_Controller:
         # Shared Arrays for hand states
         self.left_hand_state_array  = Array('d', Dex3_Num_Motors, lock=True)  
         self.right_hand_state_array = Array('d', Dex3_Num_Motors, lock=True)
+        self.hand_sub_ready = False
 
         # initialize subscribe thread
         self.subscribe_state_thread = threading.Thread(target=self._subscribe_hand_state)
         self.subscribe_state_thread.daemon = True
         self.subscribe_state_thread.start()
 
-        while True:
-            if any(self.left_hand_state_array) and any(self.right_hand_state_array):
+        wait_start = time.time()
+        last_warn_time = 0.0
+        while not self.hand_sub_ready:
+            if self.control_mode == "binary" and time.time() - wait_start > 2.0:
+                logger_mp.warning("[Dex3_1_Controller] Dex3 state DDS not ready; continuing in binary command-only mode.")
                 break
             time.sleep(0.01)
-            logger_mp.warning("[Dex3_1_Controller] Waiting to subscribe dds...")
-        logger_mp.info("[Dex3_1_Controller] Subscribe dds ok.")
+            if time.time() - last_warn_time > 1.0:
+                logger_mp.warning("[Dex3_1_Controller] Waiting to subscribe dds...")
+                last_warn_time = time.time()
+        if self.hand_sub_ready:
+            logger_mp.info("[Dex3_1_Controller] Subscribe dds ok.")
 
-        hand_control_process = Process(target=self.control_process, args=(left_hand_array_in, right_hand_array_in,  self.left_hand_state_array, self.right_hand_state_array,
-                                                                          dual_hand_data_lock, dual_hand_state_array_out, dual_hand_action_array_out))
+        control_target = self.control_process if self.control_mode == "hand" else self.binary_control_process
+        hand_control_process = Process(target=control_target, args=(left_hand_array_in, right_hand_array_in,  self.left_hand_state_array, self.right_hand_state_array,
+                                                                    dual_hand_data_lock, dual_hand_state_array_out, dual_hand_action_array_out))
         hand_control_process.daemon = True
         hand_control_process.start()
 
@@ -108,6 +136,7 @@ class Dex3_1_Controller:
                 # Update right hand state
                 for idx, id in enumerate(Dex3_1_Right_JointIndex):
                     self.right_hand_state_array[idx] = right_hand_msg.motor_state[id].q
+                self.hand_sub_ready = True
             time.sleep(0.002)
     
     class _RIS_Mode:
@@ -133,14 +162,8 @@ class Dex3_1_Controller:
         self.LeftHandCmb_publisher.Write(self.left_msg)
         self.RightHandCmb_publisher.Write(self.right_msg)
         # logger_mp.debug("hand ctrl publish ok.")
-    
-    def control_process(self, left_hand_array_in, right_hand_array_in, left_hand_state_array, right_hand_state_array,
-                              dual_hand_data_lock = None, dual_hand_state_array_out = None, dual_hand_action_array_out = None):
-        self.running = True
 
-        left_q_target  = np.full(Dex3_Num_Motors, 0)
-        right_q_target = np.full(Dex3_Num_Motors, 0)
-
+    def _init_hand_cmd_msgs(self):
         q = 0.0
         dq = 0.0
         tau = 0.0
@@ -164,12 +187,21 @@ class Dex3_1_Controller:
         for id in Dex3_1_Right_JointIndex:
             ris_mode = self._RIS_Mode(id = id, status = 0x01)
             motor_mode = ris_mode._mode_to_uint8()
-            self.right_msg.motor_cmd[id].mode = motor_mode  
+            self.right_msg.motor_cmd[id].mode = motor_mode
             self.right_msg.motor_cmd[id].q    = q
             self.right_msg.motor_cmd[id].dq   = dq
             self.right_msg.motor_cmd[id].tau  = tau
             self.right_msg.motor_cmd[id].kp   = kp
-            self.right_msg.motor_cmd[id].kd   = kd  
+            self.right_msg.motor_cmd[id].kd   = kd
+    
+    def control_process(self, left_hand_array_in, right_hand_array_in, left_hand_state_array, right_hand_state_array,
+                              dual_hand_data_lock = None, dual_hand_state_array_out = None, dual_hand_action_array_out = None):
+        self.running = True
+
+        left_q_target  = np.full(Dex3_Num_Motors, 0)
+        right_q_target = np.full(Dex3_Num_Motors, 0)
+
+        self._init_hand_cmd_msgs()
 
         try:
             while self.running:
@@ -204,6 +236,57 @@ class Dex3_1_Controller:
                 time.sleep(sleep_time)
         finally:
             logger_mp.info("Dex3_1_Controller has been closed.")
+
+    def binary_control_process(self, left_grasp_value_in, right_grasp_value_in, left_hand_state_array, right_hand_state_array,
+                               dual_hand_data_lock = None, dual_hand_state_array_out = None, dual_hand_action_array_out = None):
+        self.running = True
+        left_q_target = DEX3_LEFT_OPEN_Q.copy()
+        right_q_target = DEX3_RIGHT_OPEN_Q.copy()
+
+        self._init_hand_cmd_msgs()
+        logger_mp.info("[Dex3_1_Controller] Binary mode publishing HandCmd to rt/dex3/left/cmd and rt/dex3/right/cmd.")
+
+        last_left_grasp = None
+        last_right_grasp = None
+
+        try:
+            while self.running:
+                start_time = time.time()
+                with left_grasp_value_in.get_lock():
+                    left_grasp = left_grasp_value_in.value
+                with right_grasp_value_in.get_lock():
+                    right_grasp = right_grasp_value_in.value
+
+                left_grasp_closed = left_grasp >= 0.5
+                right_grasp_closed = right_grasp >= 0.5
+                if left_grasp_closed != last_left_grasp or right_grasp_closed != last_right_grasp:
+                    logger_mp.info(
+                        f"[Dex3_1_Controller] Binary grasp command: "
+                        f"L={'close' if left_grasp_closed else 'open'}, "
+                        f"R={'close' if right_grasp_closed else 'open'}"
+                    )
+                    last_left_grasp = left_grasp_closed
+                    last_right_grasp = right_grasp_closed
+
+                left_goal = DEX3_LEFT_CLOSE_Q if left_grasp >= 0.5 else DEX3_LEFT_OPEN_Q
+                right_goal = DEX3_RIGHT_CLOSE_Q if right_grasp >= 0.5 else DEX3_RIGHT_OPEN_Q
+                left_q_target += np.clip(left_goal - left_q_target, -DEX3_BINARY_MAX_Q_STEP, DEX3_BINARY_MAX_Q_STEP)
+                right_q_target += np.clip(right_goal - right_q_target, -DEX3_BINARY_MAX_Q_STEP, DEX3_BINARY_MAX_Q_STEP)
+
+                state_data = np.concatenate((np.array(left_hand_state_array[:]), np.array(right_hand_state_array[:])))
+                action_data = np.concatenate((left_q_target, right_q_target))
+                if dual_hand_state_array_out and dual_hand_action_array_out:
+                    with dual_hand_data_lock:
+                        dual_hand_state_array_out[:] = state_data
+                        dual_hand_action_array_out[:] = action_data
+
+                self.ctrl_dual_hand(left_q_target, right_q_target)
+                current_time = time.time()
+                time_elapsed = current_time - start_time
+                sleep_time = max(0, (1 / self.fps) - time_elapsed)
+                time.sleep(sleep_time)
+        finally:
+            logger_mp.info("Dex3_1_Controller binary mode has been closed.")
 
 class Dex3_1_Left_JointIndex(IntEnum):
     kLeftHandThumb0 = 0

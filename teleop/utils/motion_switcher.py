@@ -26,6 +26,10 @@ class MotionSwitcher:
     def Exit_Debug_Mode(self):
         try:
             status, result = self.msc.SelectMode(nameOrAlias='ai')
+            time.sleep(0.5)
+            check_status, check_result = self.msc.CheckMode()
+            if check_status == 0 and check_result and check_result.get("name") == "ai":
+                return 0, check_result
             return status, result
         except Exception as e:
             return None, None

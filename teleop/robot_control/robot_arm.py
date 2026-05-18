@@ -85,6 +85,7 @@ class G1_29_ArmController:
         self._speed_gradual_max = False
         self._gradual_start_time = None
         self._gradual_time = None
+        self.arm_sdk_weight = 1.0 if self.motion_mode else 0.0
 
         if self.motion_mode:
             self.lowcmd_publisher = ChannelPublisher(kTopicLowCommand_Motion, hg_LowCmd)
@@ -112,6 +113,7 @@ class G1_29_ArmController:
         self.msg.mode_machine = self.get_mode_machine()
 
         self.all_motor_q = self.get_current_motor_q()
+        self.startup_dual_arm_q = np.array([self.all_motor_q[id] for id in G1_29_JointArmIndex])
         logger_mp.debug(f"Current all body motor state q:\n{self.all_motor_q} \n")
         logger_mp.debug(f"Current two arms motor state q:\n{self.get_current_dual_arm_q()}\n")
         logger_mp.info("Lock all joints except two arms...")
@@ -163,20 +165,21 @@ class G1_29_ArmController:
         return cliped_arm_q_target
 
     def _ctrl_motor_state(self):
-        if self.motion_mode:
-            self.msg.motor_cmd[G1_29_JointIndex.kNotUsedJoint0].q = 1.0;
-
         while True:
             start_time = time.time()
 
             with self.ctrl_lock:
                 arm_q_target     = self.q_target
                 arm_tauff_target = self.tauff_target
+                arm_sdk_weight   = self.arm_sdk_weight
 
             if self.simulation_mode:
                 cliped_arm_q_target = arm_q_target
             else:
                 cliped_arm_q_target = self.clip_arm_q_target(arm_q_target, velocity_limit = self.arm_velocity_limit)
+
+            if self.motion_mode:
+                self.msg.motor_cmd[G1_29_JointIndex.kNotUsedJoint0].q = arm_sdk_weight
 
             for idx, id in enumerate(G1_29_JointArmIndex):
                 self.msg.motor_cmd[id].q = cliped_arm_q_target[idx]
@@ -218,17 +221,43 @@ class G1_29_ArmController:
     def get_current_dual_arm_dq(self):
         '''Return current state dq of the left and right arm motors.'''
         return np.array([self.lowstate_buffer.GetData().motor_state[id].dq for id in G1_29_JointArmIndex])
+
+    def release_arm_sdk_mode(self, duration = 8.0):
+        '''Release arm SDK control in motion mode so the robot motion controller can take back the arms.'''
+        if not self.motion_mode:
+            return
+
+        logger_mp.info("[G1_29_ArmController] release arm sdk mode start...")
+        self._speed_gradual_max = False
+        with self.ctrl_lock:
+            self.q_target = self.get_current_dual_arm_q()
+            self.tauff_target = np.zeros(14)
+            current_weight = self.arm_sdk_weight
+
+        steps = max(2, int(duration / self.control_dt))
+        for weight in np.linspace(current_weight, 0.0, num=steps):
+            with self.ctrl_lock:
+                self.arm_sdk_weight = float(weight)
+            time.sleep(duration / steps)
+        with self.ctrl_lock:
+            self.arm_sdk_weight = 0.0
+        time.sleep(0.3)
+        logger_mp.info("[G1_29_ArmController] release arm sdk mode OK.")
     
-    def ctrl_dual_arm_go_home(self):
+    def ctrl_dual_arm_go_home(self, velocity_limit = 3.0, timeout = 20.0, hold_time = 1.0):
         '''Move both the left and right arms of the robot to their home position by setting the target joint angles (q) and torques (tau) to zero.'''
         logger_mp.info("[G1_29_ArmController] ctrl_dual_arm_go_home start...")
-        max_attempts = 100
-        current_attempts = 0
+        previous_velocity_limit = self.arm_velocity_limit
+        previous_speed_gradual_max = self._speed_gradual_max
+        self._speed_gradual_max = False
+        self.arm_velocity_limit = velocity_limit
+        reached_home = False
         with self.ctrl_lock:
             self.q_target = np.zeros(14)
             # self.tauff_target = np.zeros(14)
         tolerance = 0.05  # Tolerance threshold for joint angles to determine "close to zero", can be adjusted based on your motor's precision requirements
-        while current_attempts < max_attempts:
+        deadline = time.time() + timeout
+        while time.time() < deadline:
             current_q = self.get_current_dual_arm_q()
             if np.all(np.abs(current_q) < tolerance):
                 if self.motion_mode:
@@ -236,9 +265,19 @@ class G1_29_ArmController:
                         self.msg.motor_cmd[G1_29_JointIndex.kNotUsedJoint0].q = weight;
                         time.sleep(0.02)
                 logger_mp.info("[G1_29_ArmController] both arms have reached the home position.")
+                reached_home = True
                 break
-            current_attempts += 1
             time.sleep(0.05)
+        if reached_home:
+            time.sleep(hold_time)
+        else:
+            current_q = self.get_current_dual_arm_q()
+            with self.ctrl_lock:
+                self.q_target = current_q
+                self.tauff_target = np.zeros(14)
+            logger_mp.warning("[G1_29_ArmController] go home timed out; holding current arm position.")
+        self.arm_velocity_limit = previous_velocity_limit
+        self._speed_gradual_max = previous_speed_gradual_max
 
     def speed_gradual_max(self, t = 5.0):
         '''Parameter t is the total time required for arms velocity to gradually increase to its maximum value, in seconds. The default is 5.0.'''

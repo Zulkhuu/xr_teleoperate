@@ -308,6 +308,19 @@ class G1_29_ArmIK:
 
             # return sol_q, sol_tauff
             return current_lr_arm_motor_q, np.zeros(self.reduced_robot.model.nv)
+
+    def get_current_ee_poses(self, current_lr_arm_motor_q):
+        pin.framesForwardKinematics(self.reduced_robot.model, self.reduced_robot.data, current_lr_arm_motor_q)
+        left_ee = self.reduced_robot.data.oMf[self.L_hand_id]
+        right_ee = self.reduced_robot.data.oMf[self.R_hand_id]
+
+        left_pose = np.eye(4)
+        right_pose = np.eye(4)
+        left_pose[:3, :3] = left_ee.rotation
+        left_pose[:3, 3] = left_ee.translation
+        right_pose[:3, :3] = right_ee.rotation
+        right_pose[:3, 3] = right_ee.translation
+        return left_pose, right_pose
         
 class G1_23_ArmIK:
     def __init__(self, Unit_Test = False, Visualization = False):
