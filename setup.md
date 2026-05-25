@@ -115,9 +115,17 @@ PY
 
 ### 4.1 推荐：上半身 teleop，下半身保持 Unitree 内置平衡
 
-这个模式适合做桌面操作：机器人下半身保持 Regular/Motion 的站立平衡，不用 Quest 控制移动。
+这个模式适合做桌面操作：机器人下半身保持 Regular/AI 的站立平衡，不用 Quest 控制移动。
 
-先让机器人处于可站立的 Regular/AI mode，不要在 Damping mode。然后在 Host 上运行：
+启动前先确认机器人处于 **Regular/AI mode**，也就是 Unitree 底层运动控制还在接管下半身平衡。不要处于 Damping mode，也不要用不带 `--motion` 的 Debug lowcmd 模式。
+
+关键点：
+
+- 使用 `--motion --upper-body-only`：上半身走 arm SDK，下半身继续由 Unitree 内置控制器保持站立。
+- 使用 `--motion` 但不加 `--upper-body-only`：下半身仍由 Unitree 内置控制器平衡，但速度命令来自 Quest controller。
+- 不使用 `--motion`：程序会调用 `Enter_Debug_Mode()`，这会进入 Debug/SDK lowcmd 路径，不是你想要的“下半身自动站立”模式。
+
+然后在 Host 上运行：
 
 ```bash
 cd /home/zc1525/xr_teleoperate/teleop
@@ -187,6 +195,18 @@ https://vuer.ai?grid=False
 - 如果 VR session 的世界坐标朝向不对，手会往操作者真实站位方向扭。
 - 当前代码默认使用相对 controller wrist pose；如要退回旧的绝对 wrist pose，可加 `--absolute-wrist-pose`，但不推荐。
 
+按 `r` 后预期终端日志顺序：
+
+```text
+Pre-teleop safety sequence: raise arms to safety pose before opening hands.
+Arm safety pose reached.
+Starting hand controller after arms reached the safety pose.
+[Inspire safety] open both hands.
+---------------------start Tracking-------------------------
+```
+
+如果你只是启动了程序、进入了 VR、但还没有按 `r`，手不会打开。这是当前保护逻辑：上电和等待阶段默认保持 close，避免机器人还没举手时先把手指打开。
+
 ## 6. Inspire FTP 手开关逻辑
 
 当前手不是 Dex3，也不是 DFX bridge，而是 Inspire FTP，直接走 ModbusTCP：
@@ -219,6 +239,14 @@ close = [0, 0, 0, 0, 0, 1]      -> [0, 0, 0, 0, 0, 1000]
 - 程序等待 `r` 时：默认不启动手 controller，不会提前 open
 - 按 `r` 后：先把双臂抬到安全姿态，再启动手 controller 并 open
 - 按 `q` 后：先 hold 当前姿态，再回安全姿态，再 close 手，再慢慢放回启动姿态，最后 release arm SDK
+
+不要在正常 teleop 启动命令里加：
+
+```bash
+--disable-hand-safety-sequence
+```
+
+这个参数会跳过当前这套“先举手、再开手、退出先关手”的保护流程。
 
 手动把双手 close：
 
@@ -380,6 +408,19 @@ nc -vz 192.168.123.211 6000
 cd /home/zc1525/xr_teleoperate
 uv run python teleop/utils/inspire_ftp_close_hands.py
 ```
+
+如果按 `r` 后没有看到手打开，先看终端是否出现这些日志：
+
+```text
+Starting hand controller after arms reached the safety pose.
+[Inspire_Controller_FTP] Using direct ModbusTCP control ...
+[Inspire_Controller_FTP] Connected left FTP hand at 192.168.123.210:6000.
+[Inspire_Controller_FTP] Connected right FTP hand at 192.168.123.211:6000.
+[Inspire safety] open both hands.
+```
+
+如果没有 `Connected ... FTP hand`，问题是手的网络/电源/端口。  
+如果有 `open both hands` 但手不动，再用手动 close/open 测试脚本或检查手当前是否已经处于 open。
 
 ### 9.5 遥控器退出后没恢复
 
