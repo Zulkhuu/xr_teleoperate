@@ -1,6 +1,7 @@
 import numpy as np
 import threading
 import time
+from teleop.robot_control.command_gate import ArmCommandGate
 from enum import IntEnum
 
 from unitree_sdk2py.core.channel import ChannelPublisher, ChannelSubscriber, ChannelFactoryInitialize # dds
@@ -64,7 +65,7 @@ class DataBuffer:
         with self.lock:
             self.data = data
 
-class G1_29_ArmController:
+class G1_29_ArmController(ArmCommandGate):
     def __init__(self, motion_mode = False, simulation_mode = False):
         logger_mp.info("Initialize G1_29_ArmController...")
         self.q_target = np.zeros(14)
@@ -95,6 +96,8 @@ class G1_29_ArmController:
         self.lowstate_subscriber = ChannelSubscriber(kTopicLowState, hg_LowState)
         self.lowstate_subscriber.Init()
         self.lowstate_buffer = DataBuffer()
+
+        self._init_command_gate()
 
         # initialize subscribe thread
         self.subscribe_thread = threading.Thread(target=self._subscribe_motor_state)
@@ -150,6 +153,7 @@ class G1_29_ArmController:
         while True:
             msg = self.lowstate_subscriber.Read()
             if msg is not None:
+                self.state_received_at = time.monotonic()
                 lowstate = G1_29_LowState()
                 for id in range(G1_29_Num_Motors):
                     lowstate.motor_state[id].q  = msg.motor_state[id].q
@@ -166,6 +170,7 @@ class G1_29_ArmController:
 
     def _ctrl_motor_state(self):
         while True:
+            epoch = self._command_epoch
             start_time = time.time()
 
             with self.ctrl_lock:
@@ -187,7 +192,14 @@ class G1_29_ArmController:
                 self.msg.motor_cmd[id].tau = arm_tauff_target[idx]   
 
             self.msg.crc = self.crc.Crc(self.msg)
-            self.lowcmd_publisher.Write(self.msg)
+            self._publish_command(epoch)
+            if self._publish_count == 1:
+                logger_mp.info(
+                    "[G1_29_ArmController] First rt/arm_sdk command sent "
+                    "(sdk_weight=%.2f, shoulder targets %.3f/%.3f rad).",
+                    arm_sdk_weight,
+                    float(cliped_arm_q_target[0]), float(cliped_arm_q_target[7]),
+                )
 
             if self._speed_gradual_max is True:
                 t_elapsed = start_time - self._gradual_start_time
@@ -383,7 +395,7 @@ class G1_29_JointIndex(IntEnum):
     kNotUsedJoint4 = 33
     kNotUsedJoint5 = 34
 
-class G1_23_ArmController:
+class G1_23_ArmController(ArmCommandGate):
     def __init__(self, motion_mode = False, simulation_mode = False):
         self.simulation_mode = simulation_mode
         self.motion_mode = motion_mode
@@ -416,6 +428,8 @@ class G1_23_ArmController:
         self.lowstate_subscriber = ChannelSubscriber(kTopicLowState, hg_LowState)
         self.lowstate_subscriber.Init()
         self.lowstate_buffer = DataBuffer()
+
+        self._init_command_gate()
 
         # initialize subscribe thread
         self.subscribe_thread = threading.Thread(target=self._subscribe_motor_state)
@@ -458,6 +472,9 @@ class G1_23_ArmController:
             self.msg.motor_cmd[id].q  = self.all_motor_q[id]
         logger_mp.info("Lock OK!")
 
+        # Hold the measured pose until explicit operator activation.
+        self.q_target = self.get_current_dual_arm_q().copy()
+
         # initialize publish thread
         self.publish_thread = threading.Thread(target=self._ctrl_motor_state)
         self.ctrl_lock = threading.Lock()
@@ -470,6 +487,7 @@ class G1_23_ArmController:
         while True:
             msg = self.lowstate_subscriber.Read()
             if msg is not None:
+                self.state_received_at = time.monotonic()
                 lowstate = G1_23_LowState()
                 for id in range(G1_23_Num_Motors):
                     lowstate.motor_state[id].q  = msg.motor_state[id].q
@@ -489,6 +507,7 @@ class G1_23_ArmController:
             self.msg.motor_cmd[G1_23_JointIndex.kNotUsedJoint0].q = 1.0;
 
         while True:
+            epoch = self._command_epoch
             start_time = time.time()
 
             with self.ctrl_lock:
@@ -506,7 +525,7 @@ class G1_23_ArmController:
                 self.msg.motor_cmd[id].tau = arm_tauff_target[idx]      
 
             self.msg.crc = self.crc.Crc(self.msg)
-            self.lowcmd_publisher.Write(self.msg)
+            self._publish_command(epoch)
 
             if self._speed_gradual_max is True:
                 t_elapsed = start_time - self._gradual_start_time
@@ -658,7 +677,7 @@ class G1_23_JointIndex(IntEnum):
     kNotUsedJoint4 = 33
     kNotUsedJoint5 = 34
 
-class H1_2_ArmController:
+class H1_2_ArmController(ArmCommandGate):
     def __init__(self, motion_mode = False, simulation_mode = False):
         self.simulation_mode = simulation_mode
         self.motion_mode = motion_mode
@@ -691,6 +710,8 @@ class H1_2_ArmController:
         self.lowstate_subscriber = ChannelSubscriber(kTopicLowState, hg_LowState)
         self.lowstate_subscriber.Init()
         self.lowstate_buffer = DataBuffer()
+
+        self._init_command_gate()
 
         # initialize subscribe thread
         self.subscribe_thread = threading.Thread(target=self._subscribe_motor_state)
@@ -733,6 +754,9 @@ class H1_2_ArmController:
             self.msg.motor_cmd[id].q  = self.all_motor_q[id]
         logger_mp.info("Lock OK!")
 
+        # Hold the measured pose until explicit operator activation.
+        self.q_target = self.get_current_dual_arm_q().copy()
+
         # initialize publish thread
         self.publish_thread = threading.Thread(target=self._ctrl_motor_state)
         self.ctrl_lock = threading.Lock()
@@ -745,6 +769,7 @@ class H1_2_ArmController:
         while True:
             msg = self.lowstate_subscriber.Read()
             if msg is not None:
+                self.state_received_at = time.monotonic()
                 lowstate = H1_2_LowState()
                 for id in range(H1_2_Num_Motors):
                     lowstate.motor_state[id].q  = msg.motor_state[id].q
@@ -764,6 +789,7 @@ class H1_2_ArmController:
             self.msg.motor_cmd[H1_2_JointIndex.kNotUsedJoint0].q = 1.0;
 
         while True:
+            epoch = self._command_epoch
             start_time = time.time()
 
             with self.ctrl_lock:
@@ -781,7 +807,7 @@ class H1_2_ArmController:
                 self.msg.motor_cmd[id].tau = arm_tauff_target[idx]      
 
             self.msg.crc = self.crc.Crc(self.msg)
-            self.lowcmd_publisher.Write(self.msg)
+            self._publish_command(epoch)
 
             if self._speed_gradual_max is True:
                 t_elapsed = start_time - self._gradual_start_time
@@ -940,7 +966,7 @@ class H1_2_JointIndex(IntEnum):
     kNotUsedJoint6 = 33
     kNotUsedJoint7 = 34
 
-class H1_ArmController:
+class H1_ArmController(ArmCommandGate):
     def __init__(self, simulation_mode = False):
         self.simulation_mode = simulation_mode
         
@@ -966,6 +992,8 @@ class H1_ArmController:
         self.lowstate_subscriber = ChannelSubscriber(kTopicLowState, go_LowState)
         self.lowstate_subscriber.Init()
         self.lowstate_buffer = DataBuffer()
+
+        self._init_command_gate()
 
         # initialize subscribe thread
         self.subscribe_thread = threading.Thread(target=self._subscribe_motor_state)
@@ -1002,6 +1030,9 @@ class H1_ArmController:
             self.msg.motor_cmd[id].q  = self.all_motor_q[id]
         logger_mp.info("Lock OK!")
 
+        # Hold the measured pose until explicit operator activation.
+        self.q_target = self.get_current_dual_arm_q().copy()
+
         # initialize publish thread
         self.publish_thread = threading.Thread(target=self._ctrl_motor_state)
         self.ctrl_lock = threading.Lock()
@@ -1014,6 +1045,7 @@ class H1_ArmController:
         while True:
             msg = self.lowstate_subscriber.Read()
             if msg is not None:
+                self.state_received_at = time.monotonic()
                 lowstate = H1_LowState()
                 for id in range(H1_Num_Motors):
                     lowstate.motor_state[id].q  = msg.motor_state[id].q
@@ -1030,6 +1062,7 @@ class H1_ArmController:
 
     def _ctrl_motor_state(self):
         while True:
+            epoch = self._command_epoch
             start_time = time.time()
 
             with self.ctrl_lock:
@@ -1047,7 +1080,7 @@ class H1_ArmController:
                 self.msg.motor_cmd[id].tau = arm_tauff_target[idx]      
 
             self.msg.crc = self.crc.Crc(self.msg)
-            self.lowcmd_publisher.Write(self.msg)
+            self._publish_command(epoch)
 
             if self._speed_gradual_max is True:
                 t_elapsed = start_time - self._gradual_start_time
@@ -1160,7 +1193,7 @@ class H1_JointIndex(IntEnum):
     kLeftShoulderYaw = 18
     kLeftElbow = 19
 
-class H2_ArmController:
+class H2_ArmController(ArmCommandGate):
     def __init__(self, motion_mode=False, simulation_mode=False):
         logger_mp.info("Initialize H2_ArmController...")
         self.q_target = np.zeros(14)
@@ -1190,6 +1223,8 @@ class H2_ArmController:
         self.lowstate_subscriber = ChannelSubscriber(kTopicLowState, hg_LowState)
         self.lowstate_subscriber.Init()
         self.lowstate_buffer = DataBuffer()
+
+        self._init_command_gate()
 
         # initialize subscribe thread
         self.subscribe_thread = threading.Thread(target=self._subscribe_motor_state)
@@ -1235,6 +1270,9 @@ class H2_ArmController:
             self.msg.motor_cmd[id].q = self.all_motor_q[id]
         logger_mp.info("Lock OK!")
 
+        # Hold the measured pose until explicit operator activation.
+        self.q_target = self.get_current_dual_arm_q().copy()
+
         # initialize publish thread
         self.publish_thread = threading.Thread(target=self._ctrl_motor_state)
         self.ctrl_lock = threading.Lock()
@@ -1247,6 +1285,7 @@ class H2_ArmController:
         while True:
             msg = self.lowstate_subscriber.Read()
             if msg is not None:
+                self.state_received_at = time.monotonic()
                 lowstate = H2_LowState()
                 for id in range(35):
                     lowstate.motor_state[id].q = msg.motor_state[id].q
@@ -1266,6 +1305,7 @@ class H2_ArmController:
             self.msg.motor_cmd[H2_JointIndex.kNotUsedJoint0].q = 1.0
 
         while True:
+            epoch = self._command_epoch
             start_time = time.time()
 
             with self.ctrl_lock:
@@ -1283,7 +1323,7 @@ class H2_ArmController:
                 self.msg.motor_cmd[id].tau = arm_tauff_target[idx]
 
             self.msg.crc = self.crc.Crc(self.msg)
-            self.lowcmd_publisher.Write(self.msg)
+            self._publish_command(epoch)
 
             if self._speed_gradual_max is True:
                 t_elapsed = start_time - self._gradual_start_time

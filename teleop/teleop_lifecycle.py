@@ -7,23 +7,27 @@ logger_mp = logging_mp.getLogger(__name__)
 from teleop.robot_control.arm_motion import (
     hold_current_arm_pose, move_dual_arm_to_safety_pose,
     move_dual_arm_to_startup_pose,
+    interruptible_wait,
 )
 
 def run_startup_sequence(args, arm_ctrl, end_effector=None, check_cancel=None):
     """Raise arms, start deferred hand control, then open hands."""
     if not args.disable_hand_safety_sequence:
         logger_mp.info("Pre-teleop safety sequence: raise arms to safety pose before opening hands.")
-        move_dual_arm_to_safety_pose(
+        reached = move_dual_arm_to_safety_pose(
             arm_ctrl,
             velocity_limit=args.arm_safety_velocity,
             timeout=args.arm_safety_timeout,
             check_cancel=check_cancel,
         )
+        if reached is False:
+            raise RuntimeError('Arm preparation timed out; hands remain closed')
         if check_cancel is not None:
             check_cancel()
         if end_effector is not None:
             end_effector.start()
-            end_effector.set_grasp(False, args.hand_safety_settle)
+            end_effector.set_grasp(False, 0)
+            interruptible_wait(args.hand_safety_settle, check_cancel)
 
 
 def run_shutdown_sequence(args, arm_ctrl=None, motion_switcher=None, end_effector=None, robot_initialized=False):
@@ -33,6 +37,15 @@ def run_shutdown_sequence(args, arm_ctrl=None, motion_switcher=None, end_effecto
     exit_lower_completed = False
     try:
         if arm_ctrl is not None:
+            # Reassert SDK ownership before the hold command. This preserves
+            # the active arm pose across the A-hold exit edge; release happens
+            # only after all arm trajectories complete.
+            if args.motion and hasattr(arm_ctrl, "arm_sdk_weight"):
+                arm_ctrl.arm_sdk_weight = 1.0
+                logger_mp.info(
+                    "Exit safety sequence: arm SDK control reasserted (weight=1.0, suspended=%s).",
+                    getattr(arm_ctrl, "commands_suspended", False),
+                )
             logger_mp.info("Exit safety sequence: hold current pose before any return motion.")
             hold_current_arm_pose(
                 arm_ctrl,
@@ -90,4 +103,3 @@ def run_shutdown_sequence(args, arm_ctrl=None, motion_switcher=None, end_effecto
             logger_mp.info(f"Switch to AI/remote mode: {'Success' if status == 0 else 'Failed'}")
     except Exception as e:
         logger_mp.error(f"Failed to switch to AI/remote mode: {e}")
-

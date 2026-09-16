@@ -265,6 +265,7 @@ class G1_29_ArmIK:
         self.opti.set_value(self.var_q_last, self.init_data) # for smooth
 
         try:
+            self.last_solve_valid = False
             sol = self.opti.solve()
             # sol = self.opti.solve_limited()
 
@@ -284,9 +285,11 @@ class G1_29_ArmIK:
             if self.Visualization:
                 self.vis.display(sol_q)  # for visualization
 
+            self.last_solve_valid = True
             return sol_q, sol_tauff
         
         except Exception as e:
+            self.last_solve_valid = False
             logger_mp.error(f"ERROR in convergence, plotting debug info.{e}")
 
             sol_q = self.opti.debug.value(self.var_q)
@@ -557,6 +560,7 @@ class G1_23_ArmIK:
         self.opti.set_value(self.var_q_last, self.init_data) # for smooth
 
         try:
+            self.last_solve_valid = False
             sol = self.opti.solve()
             # sol = self.opti.solve_limited()
 
@@ -576,9 +580,11 @@ class G1_23_ArmIK:
             if self.Visualization:
                 self.vis.display(sol_q)  # for visualization
 
+            self.last_solve_valid = True
             return sol_q, sol_tauff
         
         except Exception as e:
+            self.last_solve_valid = False
             logger_mp.error(f"ERROR in convergence, plotting debug info.{e}")
 
             sol_q = self.opti.debug.value(self.var_q)
@@ -861,6 +867,7 @@ class H1_2_ArmIK:
         self.opti.set_value(self.var_q_last, self.init_data) # for smooth
 
         try:
+            self.last_solve_valid = False
             sol = self.opti.solve()
             # sol = self.opti.solve_limited()
 
@@ -880,9 +887,11 @@ class H1_2_ArmIK:
             if self.Visualization:
                 self.vis.display(sol_q)  # for visualization
 
+            self.last_solve_valid = True
             return sol_q, sol_tauff
         
         except Exception as e:
+            self.last_solve_valid = False
             logger_mp.error(f"ERROR in convergence, plotting debug info.{e}")
 
             sol_q = self.opti.debug.value(self.var_q)
@@ -1168,6 +1177,7 @@ class H1_ArmIK:
         self.opti.set_value(self.var_q_last, self.init_data) # for smooth
 
         try:
+            self.last_solve_valid = False
             sol = self.opti.solve()
             # sol = self.opti.solve_limited()
 
@@ -1187,9 +1197,11 @@ class H1_ArmIK:
             if self.Visualization:
                 self.vis.display(sol_q)  # for visualization
 
+            self.last_solve_valid = True
             return sol_q, sol_tauff
         
         except Exception as e:
+            self.last_solve_valid = False
             logger_mp.error(f"ERROR in convergence, plotting debug info.{e}")
 
             sol_q = self.opti.debug.value(self.var_q)
@@ -1454,6 +1466,7 @@ class H2_ArmIK:
         self.opti.set_value(self.var_q_last, self.init_data)
 
         try:
+            self.last_solve_valid = False
             sol = self.opti.solve()
             # sol = self.opti.solve_limited()
 
@@ -1473,9 +1486,11 @@ class H2_ArmIK:
             if self.Visualization:
                 self.vis.display(sol_q)  # for visualization
 
+            self.last_solve_valid = True
             return sol_q, sol_tauff
 
         except Exception as e:
+            self.last_solve_valid = False
             logger_mp.error(f"ERROR in convergence, plotting debug info.{e}")
 
             sol_q = self.opti.debug.value(self.var_q)

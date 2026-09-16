@@ -8,6 +8,20 @@ from teleop.xr_connection import XRSession, xr_video_options
 
 
 class XRTests(unittest.TestCase):
+    def test_network_hud_selects_local_frames_without_changing_backend(self):
+        import sys
+        factory = Mock()
+        config = {'head_camera': dict(enable_zmq=True, enable_webrtc=True,
+                                     webrtc_port=60001, binocular=True, image_shape=[480, 1280])}
+        session = XRSession(parse_args(['--xr', 'vuer']))
+        with patch.dict(sys.modules, {'televuer': SimpleNamespace(TeleVuerWrapper=factory)}):
+            self.assertTrue(session.configure_display(config, hud=True))
+        self.assertFalse(factory.call_args.kwargs['webrtc'])
+        self.assertIsNone(session.transport)
+        config['head_camera']['enable_zmq'] = False
+        with self.assertRaisesRegex(ValueError, 'HUD requires'):
+            session.configure_display(config, hud=True)
+
     def test_defaults_and_video(self):
         config = {'head_camera': dict(enable_zmq=True, enable_webrtc=True, webrtc_port=60001)}
         self.assertTrue(xr_video_options(parse_args([]), config)[0]['webrtc'])
@@ -45,6 +59,15 @@ class XRTests(unittest.TestCase):
 
 
 class XRSessionTests(unittest.TestCase):
+    @patch('time.monotonic', return_value=10.1)
+    def test_poll_retains_buttons_when_pose_invalid_but_input_fresh(self, clock):
+        session = self.session()
+        session.wrapper.get_tele_data.return_value.left_wrist_valid = False
+        data, valid, input_fresh = session.poll()
+        self.assertFalse(valid)
+        self.assertTrue(input_fresh)
+        self.assertIs(data, session.wrapper.get_tele_data.return_value)
+
     def session(self, backend='vuer'):
         from types import SimpleNamespace
         from unittest.mock import Mock

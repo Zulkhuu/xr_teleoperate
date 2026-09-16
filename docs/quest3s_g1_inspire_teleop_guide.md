@@ -779,8 +779,8 @@ python teleop_hand_and_arm.py \
 
 Controller behavior in `--motion` mode:
 
-- Right controller A: exit teleoperation
-- Both thumbsticks pressed: soft emergency stop, switch to damping
+- Right controller A: immediate pause; hold for 1.5 seconds while paused to exit
+- Both thumbsticks pressed: latched application damping; normal arm publishing stops
 - Left thumbstick: forward/back/side motion, velocity limited to 0.3 in code
 - Right thumbstick: yaw motion, velocity limited to 0.3 in code
 
@@ -790,11 +790,16 @@ For fine hand control, `--input-mode hand` is still recommended. If you use hand
 
 After the main program is running and Quest has entered the VR page:
 
-1. Align your arms close to the robot initial arm pose before pressing `r`.
-2. Press `r` in the Host terminal to start tracking.
-3. If launched with `--record`, press `s` to start recording and press `s` again to stop and save.
-4. Before exit, move both arms close to the initial pose.
-5. Press `q` in the Host terminal. The program calls `ctrl_dual_arm_go_home()` before exiting.
+1. At startup the program automatically runs the established arm safety pose and hand opening sequence. The terminal reports preparation progress; no Quest button is needed. Wait for the HUD to prompt **B: set anchor**.
+2. Release physical **B** after a short tap to anchor valid controller poses to the prepared G1-29 wrist FK poses. Keep controllers still briefly after release, then keep **X pressed continuously for 0.5 seconds** to start tracking. `--disable-hand-safety-sequence` skips the preparation step.
+3. While ACTIVE and launched with `--record`, release physical **Y** to start recording; release Y again to finalize. A held Y does not repeatedly toggle.
+4. Press physical **A** to pause immediately. Resume requires B re-alignment and a new X hold. Tracking loss and invalid IK also pause and finalize recording.
+5. Hold **A** for 1.5 seconds while paused for the existing graceful shutdown sequence. A short press does not send the arms home.
+6. **L3 + R3** latches application damping. Check/recover the robot externally, then B re-align and hold X to resume. Releasing the sticks alone never resumes. This is not a replacement for the physical emergency stop.
+
+Physical X/Y are TeleVuer's left-controller A/B; physical A/B are its right-controller A/B. B/Y taps must finish within 0.7 seconds. Keyboard debugging remains available through the same state machine: `b` anchor, `r` activate, `s` record, `p` pause, `q` exit. Hand-tracking mode uses this fallback.
+
+The OpenCV HUD uses local ZMQ head video and is repeated in each binocular eye; recorded frames remain raw. Pass-through has no camera HUD. See [Quest controls and hardware validation notes](../README.md#quest-controls) for preparation, recovery, and transport details.
 
 Recording example:
 

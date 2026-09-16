@@ -28,8 +28,13 @@ class XRSession:
         if self.transport is not None:
             self.transport.start()
 
-    def configure_display(self, camera_config):
+    def configure_display(self, camera_config, hud=False):
         options, needs_image = xr_video_options(self.args, camera_config)
+        if hud and self.args.display_mode != 'pass-through':
+            if not camera_config['head_camera']['enable_zmq']:
+                raise ValueError('OpenCV XR HUD requires head_camera.enable_zmq=true')
+            options.update(webrtc=False, webrtc_url=None)
+            needs_image = True
         from televuer import TeleVuerWrapper
         camera = camera_config['head_camera']
         self.wrapper = TeleVuerWrapper(use_hand_tracking=self.args.input_mode == 'hand',
@@ -51,7 +56,8 @@ class XRSession:
         if self.wrapper is not None and not self.wrapper.tvuer.process.is_alive():
             raise RuntimeError('XR server stopped. Restart teleoperation.')
 
-    def read(self):
+    def poll(self):
+        """Return data, pose validity and input freshness without exiting on loss."""
         self.check()
         if self.wrapper is not None:
             tv = self.wrapper.tvuer
@@ -60,7 +66,15 @@ class XRSession:
             valid = all((data.head_valid, data.left_wrist_valid, data.right_wrist_valid))
         else:
             raise RuntimeError('XR backend has not started')
-        if received <= 0 or time.monotonic() - received > self.timeout or not valid:
+        now = time.monotonic()
+        fresh = received > 0 and now - received <= self.timeout
+        input_time = tv.input_received_at.value
+        input_fresh = input_time > 0 and now - input_time <= self.timeout
+        return data, fresh and valid, input_fresh
+
+    def read(self):
+        data, valid, _ = self.poll()
+        if not valid:
             raise RuntimeError('XR tracking is missing, invalid, or stale. Restart with active tracking.')
         return data
 

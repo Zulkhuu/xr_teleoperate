@@ -229,7 +229,7 @@ build  cert.pem  key.pem  LICENSE  pyproject.toml  README.md  rootCA.key  rootCA
 |   `--sim`    | **Enable [simulation mode](https://github.com/unitreerobotics/unitree_sim_isaaclab)** |
 |   `--ipc`    | **Inter-process communication mode** Allows controlling the xr_teleoperate program’s state via IPC. Suitable for interaction with agent programs. |
 | `--affinity` | **CPU affinity mode** Set CPU core affinity. If you are unsure what this is, do not set it. |
-|  `--record`  | **Enable data recording mode** Press **r** to start teleoperation, then **s** to start recording; press **s** again to stop and save the episode. Press **s** repeatedly to repeat the process. |
+|  `--record`  | **Enable data recording mode** While ACTIVE, release Quest **Y** to start/stop an episode. Keyboard **s** is the debugging fallback. |
 |  `--task-*`  | Configure the save path, target, description, and steps of the recorded task. |
 
 ## 1.4 🔄 State Transition Diagram
@@ -337,9 +337,9 @@ Next steps:
 
    <p align="center">  <a href="https://oss-global-cdn.unitree.com/static/2522a83214744e7c8c425cc2679a84ec_670x867.png">    <img src="https://oss-global-cdn.unitree.com/static/2522a83214744e7c8c425cc2679a84ec_670x867.png" alt="Initial Pose" style="width: 25%;">  </a> </p>
 
-8. Press **r** in the terminal to begin teleoperation. You can now control the robot arm and dexterous hand.
+8. Startup automatically moves the arms/hands through the safety preparation and reports progress in the terminal. After it completes, **B release** anchors, then **hold X** (keep pressed for 0.5 seconds) starts tracking; see [Quest controls](#quest-controls). Keyboard fallback: **b**, **r**.
 
-9. During teleoperation, press **s** to start recording; press **s** again to stop and save. Repeatable process.
+9. While ACTIVE, release **Y** to start recording; release **Y** again to stop and save. Keyboard fallback: **s**.
 
 <p align="center">  <a href="https://oss-global-cdn.unitree.com/static/f5b9b03df89e45ed8601b9a91adab37a_2397x1107.png">    <img src="https://oss-global-cdn.unitree.com/static/f5b9b03df89e45ed8601b9a91adab37a_2397x1107.png" alt="Recording Process" style="width: 75%;">  </a> </p>
 
@@ -351,7 +351,7 @@ Next steps:
 
 ## 2.3 🔚 Exit
 
-Press **q** in the terminal (or “record image” window) to quit.
+Press Quest **A** to pause, then hold **A** for 1.5 seconds to exit. Keyboard fallback: **q**.
 
 
 
@@ -456,13 +456,42 @@ Please refer to the [Repo README](https://github.com/unitreerobotics/dex1_1_serv
 >  2. Please make sure to read the [Official Documentation](https://support.unitree.com/home/zh/Teleoperation) at least once before running this program.
 >  3. To use motion mode (with `--motion`), ensure the robot is in control mode (via [R3 remote](https://www.unitree.com/R3)).
 >  5. In motion mode:
->    - Right controller **A** = Exit teleop
->    - Both joysticks pressed = soft emergency stop (switch to damping mode)
+>    - Right controller **A** = immediate pause; hold while paused to exit
+>    - Both joysticks pressed = latched application damping (normal arm publishing stops)
 >    - Left joystick = drive directions; 
 >    - right joystick = turning; 
 >    - max speed is limited in the code.
 
 Same as simulation but follow the safety warnings above.
+
+### Quest controls
+
+Use `--input-mode controller` for Quest 3/3S controllers (the USB backends select this by default).
+
+| Physical button | Action |
+| --- | --- |
+| B release | Set/re-set teleop anchor |
+| Hold X (0.5 s) | Enable/resume arm teleoperation; keep the button continuously pressed for 0.5 seconds |
+| Y release | Start/stop recording, only while ACTIVE and with `--record` |
+| A press | Pause immediately, without home motion |
+| Hold A while paused (1.5 s) | Graceful exit |
+| L3 + R3 | Emergency damping; application latch, not the physical G1 emergency stop |
+
+TeleVuer's left A/B fields mean physical X/Y; its right A/B fields mean physical A/B. B and Y require a completed tap lasting at most 0.7 seconds. B then waits for 0.15 seconds of stable controller poses. Release X before starting a new hold after alignment. Timing and motion limits live in `teleop/utils/quest_control.py`; XR staleness uses `--xr-tracking-timeout` (default 0.5 seconds).
+
+The loop stays live through WAITING_FOR_XR → WAITING_FOR_ANCHOR → ALIGNED → ACTIVE, and while PAUSED or DAMPED. Recording is separate. Pause, tracking loss, invalid IK, and damping finalize the current episode. Tracking recovery never resumes motion automatically: **B release → hold X** is required. Locomotion joystick directions/scales are unchanged, but locomotion commands are only sent while ACTIVE.
+
+With the existing hand safety sequence enabled, startup automatically enters the established preparation sequence and reports progress in the terminal; no Quest input is needed. The safety pose target remains the same as the working commit. After it finishes, the HUD prompts **B: set anchor**; release B, then hold X continuously for 0.5 seconds to track. B cannot capture an anchor before preparation completes. A pauses immediately; X is only an activation/resume control. Preparation timeout prevents hand opening. `--disable-hand-safety-sequence` retains its existing meaning and skips preparation.
+
+G1-29 pairs the converted XR wrist poses with current robot FK poses using the existing relative transform. Other arm models without FK, hand input, and `--absolute-wrist-pose` retain absolute pose conversion; B still gates activation, but does not provide relative robot EE anchoring. Activation uses a one-second ramp and a joint-target rate limit, retaining controller limits and rejecting failed/nonfinite/out-of-limit IK results.
+
+After damping, check the robot and restore the appropriate robot operating mode externally **before** B re-alignment and X activation. B acknowledges that operator check; software cannot verify it. Arm DDS publishing stays inhibited through re-alignment and resumes only on deliberate activation. A damped exit skips home/release/mode-switch trajectories. Non-G1 models inhibit normal arm publishing but have no verified G1 damping RPC.
+
+The compact OpenCV HUD repeats in each stereo eye and is drawn on a copy; dataset camera pixels stay unchanged. This entry point requires `head_camera.enable_zmq=true` and selects local video instead of WebRTC for the HUD. Pass-through has no camera HUD. TeleVuer internals are unchanged.
+
+Keyboard/IPC debugging fallback uses the same guards: **b** anchor, **r** prepare initially or activate after anchoring (explicit keyboard substitute for held X), **s** recording toggle, **p** pause, **q** graceful exit. Hand-tracking users use this fallback. Stopping recording no longer resets the simulation, since recording controls must not move the robot.
+
+Before hardware use, verify pause/damping latency, actual G1 damping and recovery in debug/motion modes, FK frame directions, hand preparation, activation ramp, recording finalization, and mono/stereo HUD readability with G1 + Quest 3/3S. Polling/IK/network latency still bounds response time; this application interface does not replace the physical emergency stop.
 
 ## 3.6 🔚 Exit
 
@@ -470,9 +499,9 @@ Same as simulation but follow the safety warnings above.
 >
 > To avoid damaging the robot, it is recommended to position the robot's arms close to the initial pose before pressing **q** to exit.
 >
-> - In **Debug Mode**: After pressing the exit key, both arms will return to the robot's **initial pose** within 5 seconds, and then the control will end.
+> - A deliberate graceful exit uses the configured hold, safety-pose, hand-close, and mode-release sequence. In motion mode it also attempts controlled lowering when enabled. Duration depends on the configured limits/timeouts.
 >
-> - In **Motion Mode**: After pressing the exit key, both arms will return to the robot's **motion control pose** within 5 seconds, and then the control will end.
+> - A short A press only pauses. Damping and unexpected runtime failures do not launch a home trajectory.
 
 Same as simulation but follow the safety warnings above.
 

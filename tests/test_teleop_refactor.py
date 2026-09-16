@@ -79,6 +79,14 @@ class TeleopRefactorTests(unittest.TestCase):
         self.assertEqual(states['body'], {'qpos': []})
 
 class FailurePathTests(unittest.TestCase):
+    def test_preparation_timeout_does_not_open_hands(self):
+        session = Mock()
+        with patch.object(lifecycle, 'move_dual_arm_to_safety_pose', return_value=False):
+            with self.assertRaisesRegex(RuntimeError, 'timed out'):
+                lifecycle.run_startup_sequence(parse_args([]), Mock(), session)
+        session.start.assert_not_called()
+        session.set_grasp.assert_not_called()
+
     def test_early_failure_does_not_acquire_robot_mode_client(self):
         constructor = Mock()
         with patch.dict(sys.modules, {'teleop.utils.motion_switcher': SimpleNamespace(MotionSwitcher=constructor)}):
@@ -102,6 +110,23 @@ class FailurePathTests(unittest.TestCase):
                     parse_args([flag, value])
 
 class EntryPointFailureTests(unittest.TestCase):
+    def test_failed_debug_mode_never_constructs_arm_controller(self):
+        import ast
+        from pathlib import Path
+        tree = ast.parse(Path('teleop/teleop_hand_and_arm.py').read_text())
+        main = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'main')
+        switcher = Mock()
+        switcher.Enter_Debug_Mode.return_value = (1, None)
+        namespace = dict(parse_args=parse_args, XRSession=Mock(), logger_mp=Mock(),
+                         ChannelFactoryInitialize=Mock(), IPC_Server=Mock(),
+                         on_press=Mock(), get_state=Mock(), ImageClient=Mock(),
+                         MotionSwitcher=Mock(return_value=switcher),
+                         G1_29_ArmController=Mock(), run_shutdown_sequence=Mock())
+        exec(compile(ast.Module(body=[main], type_ignores=[]), '<teleop main>', 'exec'), namespace)
+        with self.assertRaisesRegex(RuntimeError, 'debug mode failed'):
+            namespace['main'](['--ipc'])
+        namespace['G1_29_ArmController'].assert_not_called()
+
     def test_failed_usb_start_cleans_up_without_initializing_dds(self):
         # Execute the actual main function with hardware imports replaced, so
         # importing this test never initializes robot libraries or a GUI.
@@ -136,51 +161,42 @@ class EntryPointFailureTests(unittest.TestCase):
         session.close.assert_called_once()
 
 class USBEntryPointTests(unittest.TestCase):
-    def test_usb_controller_reaches_ik_and_renders_camera(self):
+    def test_usb_entry_point_wires_runtime_and_local_hud_video(self):
         import ast
         from pathlib import Path
         from teleop.xr_connection import XRSession
         tree = ast.parse(Path('teleop/teleop_hand_and_arm.py').read_text())
         main = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'main')
-        pose = np.eye(4)
-        sample = SimpleNamespace(left_wrist_pose=pose, right_wrist_pose=pose,
-                                 left_wrist_valid=True, right_wrist_valid=True)
-        sample.head_valid = True
         wrapper = Mock()
-        wrapper.get_tele_data.return_value = sample
-        wrapper.tvuer.head_received_at.value = 10.
-        wrapper.tvuer.input_received_at.value = 10.
         arm = Mock()
-        arm.get_current_dual_arm_q.return_value = np.zeros(14)
-        arm.get_current_dual_arm_dq.return_value = np.zeros(14)
         ik = Mock()
-        ik.get_current_ee_poses.return_value = (pose, pose)
-        ik.solve_ik.return_value = (np.ones(14), np.zeros(14))
         namespace = dict(parse_args=parse_args, XRSession=XRSession, logger_mp=Mock(),
                          ChannelFactoryInitialize=Mock(), IPC_Server=Mock(), ImageClient=Mock(),
                          G1_29_ArmIK=Mock(return_value=ik), G1_29_ArmController=Mock(return_value=arm),
-                         create_end_effector=Mock(), run_startup_sequence=Mock(),
-                         run_shutdown_sequence=Mock(), time=Mock(), np=np,
-                         align_wrist_pose_to_start=align_wrist_pose_to_start,
-                         on_press=Mock(), get_state=Mock())
-        namespace['ImageClient'].return_value.get_cam_config.return_value = {
+                         create_end_effector=Mock(), run_shutdown_sequence=Mock(),
+                         run_startup_sequence=Mock(),
+                         LocoClientWrapper=Mock(), on_press=Mock(), get_state=Mock())
+        config = {
             'head_camera': dict(enable_zmq=True, enable_webrtc=True, webrtc_port=60001,
                                 binocular=False, image_shape=[480, 640]),
             'left_wrist_camera': {'enable_zmq': False},
             'right_wrist_camera': {'enable_zmq': False}}
-        namespace['ImageClient'].return_value.get_head_frame.return_value = SimpleNamespace(bgr='camera frame')
-        namespace['time'].time.return_value = 10.
-        namespace['IPC_Server'].return_value.start.side_effect = lambda: namespace.update(START=True)
-        arm.ctrl_dual_arm.side_effect = lambda q, tau: namespace.update(STOP=True) if np.all(q == 1) else None
+        namespace['ImageClient'].return_value.get_cam_config.return_value = config
         exec(compile(ast.Module(body=[main], type_ignores=[]), '<teleop main>', 'exec'), namespace)
-        with patch('teleop.usb_connection.QuestUSBConnection') as transport, patch.dict(sys.modules, {'televuer': SimpleNamespace(TeleVuerWrapper=Mock(return_value=wrapper))}), patch('time.monotonic', return_value=10.1):
+        with patch('teleop.usb_connection.QuestUSBConnection') as transport, patch.dict(
+                sys.modules, {'televuer': SimpleNamespace(TeleVuerWrapper=Mock(return_value=wrapper))}), patch(
+                'teleop.teleop_runtime.TeleopRuntime') as runtime:
+            runtime.return_value.damping_latched = True
             namespace['main'](['--xr', 'meta_quest', '--ipc', '--motion', '--upper-body-only', '--headless'])
-        namespace['ImageClient'].assert_called_once()
-        wrapper.render_to_xr.assert_called_with('camera frame')
-        ik.solve_ik.assert_called_once()
+            runtime.return_value.run.assert_called_once()
+            self.assertIs(runtime.call_args.args[2], arm)
+            self.assertTrue(runtime.call_args.args[7])  # local BGR rendering
+            self.assertIsNone(runtime.call_args.kwargs['damping'])
+            self.assertIsNone(runtime.call_args.kwargs['loco'])
+        # A damped exit cannot accidentally send the existing home trajectory.
+        self.assertIsNone(namespace['run_shutdown_sequence'].call_args.args[1])
         wrapper.close.assert_called_once()
         transport.return_value.close.assert_called_once()
-
 
 if __name__ == '__main__':
     unittest.main()

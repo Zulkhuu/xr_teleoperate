@@ -7,13 +7,24 @@ import logging_mp
 
 logger_mp = logging_mp.getLogger(__name__)
 
+# Low-state quantization and servo settling can leave a small residual error;
+# this is an acceptance threshold, not a command limit.
+SAFETY_POSE_TOLERANCE = 0.12
+
+def interruptible_wait(duration, check_cancel=None):
+    deadline = time.monotonic() + duration
+    while time.monotonic() < deadline:
+        if check_cancel is not None:
+            check_cancel()
+        time.sleep(min(0.02, max(0.0, deadline - time.monotonic())))
+
 def move_dual_arm_to_q_slow(
         arm_ctrl,
         q_target,
         tauff_target=None,
         velocity_limit=0.8,
         timeout=12.0,
-        tolerance=0.08,
+        tolerance=SAFETY_POSE_TOLERANCE,
         restore_previous=True, check_cancel=None):
     previous_velocity_limit = getattr(arm_ctrl, "arm_velocity_limit", None)
     previous_speed_gradual_max = getattr(arm_ctrl, "_speed_gradual_max", None)
@@ -24,14 +35,24 @@ def move_dual_arm_to_q_slow(
 
     if tauff_target is None:
         tauff_target = np.zeros_like(q_target)
+    if check_cancel is not None:
+        check_cancel()
     arm_ctrl.ctrl_dual_arm(q_target, tauff_target)
 
     reached = False
     deadline = time.time() + timeout
+    last_report = 0.0
     while time.time() < deadline:
         if check_cancel is not None:
             check_cancel()
         current_q = arm_ctrl.get_current_dual_arm_q()
+        if time.time() - last_report >= 5.0:
+            error = float(np.max(np.abs(current_q - q_target)))
+            logger_mp.info(
+                "Safety pose progress: max joint error %.3f rad (target command is being held).",
+                error,
+            )
+            last_report = time.time()
         if np.all(np.abs(current_q - q_target) < tolerance):
             reached = True
             break
@@ -66,6 +87,7 @@ def hold_current_arm_pose(arm_ctrl, hold_time=0.5, velocity_limit=0.2, label="cu
     return current_q
 
 def move_dual_arm_to_safety_pose(arm_ctrl, velocity_limit=0.8, timeout=30.0, hold_time=0.3, restore_previous=True, check_cancel=None):
+    # Preserve the established initial safety pose from the working commit.
     q_target = np.zeros_like(arm_ctrl.get_current_dual_arm_q())
     reached = move_dual_arm_to_q_slow(
         arm_ctrl,
@@ -79,9 +101,12 @@ def move_dual_arm_to_safety_pose(arm_ctrl, velocity_limit=0.8, timeout=30.0, hol
     )
     if reached:
         logger_mp.info("Arm safety pose reached.")
-        time.sleep(hold_time)
+        interruptible_wait(hold_time, check_cancel)
     else:
-        logger_mp.warning("Arm safety pose timed out; continuing with current arm pose.")
+        error = float(np.max(np.abs(arm_ctrl.get_current_dual_arm_q() - q_target)))
+        logger_mp.warning(
+            "Arm safety pose timed out; max joint error %.3f rad. "
+            "The robot did not converge to the commanded safety target.", error)
     return reached
 
 def get_startup_dual_arm_q(arm_ctrl):
