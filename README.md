@@ -489,6 +489,8 @@ After damping, check the robot and restore the appropriate robot operating mode 
 
 The compact OpenCV HUD repeats in each stereo eye and is drawn on a copy; dataset camera pixels stay unchanged. This entry point requires `head_camera.enable_zmq=true` and selects local video instead of WebRTC for the HUD. Pass-through has no camera HUD. TeleVuer internals are unchanged.
 
+The camera view defaults to full size with no vertical offset. HUD status, instructions, and recording information are centered near the bottom of each eye, with a 12% lower margin for headset visibility. Optional `--xr-image-scale` and `--xr-image-offset-y` settings adjust display pixels without changing tracking coordinates; use `--xr-image-scale 1 --xr-image-offset-y 0` for the default full-size view.
+
 Keyboard/IPC debugging fallback uses the same guards: **b** anchor, **r** prepare initially or activate after anchoring (explicit keyboard substitute for held X), **s** recording toggle, **p** pause, **q** graceful exit. Hand-tracking users use this fallback. Stopping recording no longer resets the simulation, since recording controls must not move the robot.
 
 Before hardware use, verify pause/damping latency, actual G1 damping and recovery in debug/motion modes, FK frame directions, hand preparation, activation ramp, recording finalization, and mono/stereo HUD readability with G1 + Quest 3/3S. Polling/IK/network latency still bounds response time; this application interface does not replace the physical emergency stop.

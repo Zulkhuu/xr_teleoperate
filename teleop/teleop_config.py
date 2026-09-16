@@ -11,6 +11,10 @@ def parse_args(argv=None):
     parser.add_argument('--adb-path', default='adb', help='ADB executable for USB mode.')
     parser.add_argument('--xr-tracking-timeout', type=float, default=0.5,
                         help='Maximum tracking age in seconds before stopping teleoperation.')
+    parser.add_argument('--xr-image-scale', type=float, default=1.0,
+                        help='Per-eye camera image scale inside the XR display (0 < scale <= 1; default: 1, full size).')
+    parser.add_argument('--xr-image-offset-y', type=float, default=0.0,
+                        help='Vertical camera-image offset as a fraction of eye height; positive moves down (default: 0). Clamped to keep the full image visible.')
     # basic control parameters
     parser.add_argument('--frequency', type = float, default = 30.0, help = 'control and record \'s frequency')
     parser.add_argument('--input-mode', type=str, choices=['hand', 'controller'], default=None, help='XR input (default: hand for network, controller for USB)')
@@ -31,7 +35,7 @@ def parse_args(argv=None):
                         help='Seconds to wait after hand open/close safety commands.')
     parser.add_argument('--arm-safety-velocity', type=float, default=0.8,
                         help='Arm joint velocity limit used by the pre-teleop and exit safety pose.')
-    parser.add_argument('--arm-safety-timeout', type=float, default=10.0,
+    parser.add_argument('--arm-safety-timeout', type=float, default=15.0,
                         help='Seconds to wait for the arm safety pose.')
     parser.add_argument('--exit-initial-hold', type=float, default=0.8,
                         help='Seconds to hold the current arm pose immediately after exit is requested.')
@@ -65,6 +69,10 @@ def parse_args(argv=None):
     if args.display_mode is None:
         args.display_mode = 'immersive'
     import math
+    if not math.isfinite(args.xr_image_scale) or not 0 < args.xr_image_scale <= 1:
+        parser.error('--xr-image-scale must be finite and in (0, 1]')
+    if not math.isfinite(args.xr_image_offset_y) or not -0.5 <= args.xr_image_offset_y <= 0.5:
+        parser.error('--xr-image-offset-y must be finite and in [-0.5, 0.5]')
     for name in ('frequency', 'xr_tracking_timeout'):
         value = getattr(args, name)
         if not math.isfinite(value) or value <= 0:

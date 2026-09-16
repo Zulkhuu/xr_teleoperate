@@ -82,5 +82,5 @@ class G1CommandRampTests(unittest.TestCase):
         np.testing.assert_allclose(writes[-1], .5)
 
     def test_debugging_safety_timeout_default_and_override(self):
-        self.assertEqual(parse_args([]).arm_safety_timeout, 10.)
+        self.assertEqual(parse_args([]).arm_safety_timeout, 15.)
         self.assertEqual(parse_args(['--arm-safety-timeout', '20']).arm_safety_timeout, 20.)

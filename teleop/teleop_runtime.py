@@ -12,7 +12,7 @@ from teleop.utils.quest_control import (
     QuestControllerInput, TeleopState, TeleopStateMachine,
 )
 from teleop.utils.teleop_recording import build_recording_payload
-from teleop.utils.xr_hud import draw_hud
+from teleop.utils.xr_hud import draw_hud, prepare_xr_image
 
 logger = logging.getLogger(__name__)
 
@@ -204,7 +204,11 @@ class TeleopRuntime:
             self.head = self.images.get_head_frame()
         if self.local_image and self.head is not None and self.head.bgr is not None:
             # EpisodeWriter continues to receive self.head, whose BGR stays raw.
-            image = self.head.bgr.copy()
+            image = prepare_xr_image(
+                self.head.bgr,
+                binocular=self.camera_config['head_camera']['binocular'],
+                scale=getattr(self.args, 'xr_image_scale', 1.0),
+                offset_y=getattr(self.args, 'xr_image_offset_y', 0.0))
             draw_hud(image, self.machine.state, tracking,
                      recording=self.machine.recording,
                      elapsed=time.monotonic() - self.record_started,
