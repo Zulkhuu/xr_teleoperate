@@ -141,6 +141,11 @@ class G1_29_ArmController(ArmCommandGate):
             self.msg.motor_cmd[id].q  = self.all_motor_q[id]
         logger_mp.info("Lock OK!")
 
+        # Do not let the publisher's initial zero-valued member drive the arms
+        # while DDS/motion-mode setup is still settling.  The lifecycle will
+        # issue the explicit safety-pose command after construction.
+        self.q_target = self.get_current_dual_arm_q().copy()
+
         # initialize publish thread
         self.publish_thread = threading.Thread(target=self._ctrl_motor_state)
         self.ctrl_lock = threading.Lock()

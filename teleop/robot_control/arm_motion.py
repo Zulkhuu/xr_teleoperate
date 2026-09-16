@@ -106,7 +106,14 @@ def move_dual_arm_to_safety_pose(arm_ctrl, velocity_limit=0.8, timeout=30.0, hol
         error = float(np.max(np.abs(arm_ctrl.get_current_dual_arm_q() - q_target)))
         logger_mp.warning(
             "Arm safety pose timed out; max joint error %.3f rad. "
-            "The robot did not converge to the commanded safety target.", error)
+            "The robot did not converge to the commanded safety target. "
+            "sdk_weight=%s commands_suspended=%s state_age=%.2fs",
+            error,
+            getattr(arm_ctrl, "arm_sdk_weight", "n/a"),
+            getattr(arm_ctrl, "commands_suspended", "n/a"),
+            max(0.0, time.monotonic() - getattr(
+                arm_ctrl, "state_received_at", time.monotonic())),
+        )
     return reached
 
 def get_startup_dual_arm_q(arm_ctrl):
