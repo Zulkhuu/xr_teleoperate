@@ -26,8 +26,13 @@ def draw_hud(image, state, tracking, recording=False, elapsed=0, episode=0,
         mid = image.shape[1] // 2
         eyes = [image[:, :mid], image[:, mid:]]
     for eye in eyes:
-        scale = min(0.55, eye.shape[1] / 850)
-        step = max(12, round(26 * scale / 0.55))
+        # Quest Browser crops/overscans the extreme edges of each eye.  Keep a
+        # generous per-eye safe margin and use a slightly smaller type size so
+        # the HUD remains readable without being clipped.
+        scale = min(0.45, eye.shape[1] / 1000)
+        step = max(12, round(24 * scale / 0.45))
+        margin_x = max(24, round(eye.shape[1] * 0.04))
+        margin_y = step
         color = red if state == TeleopState.DAMPED else green if state == TeleopState.ACTIVE else yellow
         lines = instructions[state][:]
         lines.insert(1, 'TRACKING: OK' if tracking else 'TRACKING: LOST')
@@ -37,11 +42,15 @@ def draw_hud(image, state, tracking, recording=False, elapsed=0, episode=0,
             cv2.putText(eye, value, (x, y), cv2.FONT_HERSHEY_SIMPLEX, scale, (0, 0, 0), 3, cv2.LINE_AA)
             cv2.putText(eye, value, (x, y), cv2.FONT_HERSHEY_SIMPLEX, scale, ink, 1, cv2.LINE_AA)
         for i, line in enumerate(lines):
-            text(line, 10, step * (i + 1), color if i == 0 else white)
+            text(line, margin_x, margin_y + step * i, color if i == 0 else white)
         if recording:
             seconds = int(max(0, elapsed))
-            x = max(10, eye.shape[1] - round(155 * scale / .55))
-            cv2.circle(eye, (x - 7, step - 4), 3, red, -1, cv2.LINE_AA)
-            text(f'REC {seconds // 60:02d}:{seconds % 60:02d}', x, step, red)
-            text(f'EP {episode:03d}', x, step * 2, red)
+            rec = f'REC {seconds // 60:02d}:{seconds % 60:02d}'
+            ep = f'EP {episode:03d}'
+            rec_width = cv2.getTextSize(rec, cv2.FONT_HERSHEY_SIMPLEX, scale, 1)[0][0]
+            ep_width = cv2.getTextSize(ep, cv2.FONT_HERSHEY_SIMPLEX, scale, 1)[0][0]
+            x = eye.shape[1] - margin_x - max(rec_width, ep_width)
+            cv2.circle(eye, (x - 7, margin_y - 4), 3, red, -1, cv2.LINE_AA)
+            text(rec, x, margin_y, red)
+            text(ep, eye.shape[1] - margin_x - ep_width, margin_y + step, red)
     return image
