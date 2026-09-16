@@ -28,3 +28,5 @@ class ArmCommandGate:
             if not self.commands_suspended and epoch == self._command_epoch:
                 self.lowcmd_publisher.Write(self.msg)
                 self._publish_count += 1
+                return True
+            return False

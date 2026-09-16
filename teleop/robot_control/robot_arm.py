@@ -145,6 +145,8 @@ class G1_29_ArmController(ArmCommandGate):
         # while DDS/motion-mode setup is still settling.  The lifecycle will
         # issue the explicit safety-pose command after construction.
         self.q_target = self.get_current_dual_arm_q().copy()
+        self._last_command_q = self.q_target.copy()
+        self._trajectory_epoch = self._command_epoch
 
         # initialize publish thread
         self.publish_thread = threading.Thread(target=self._ctrl_motor_state)
@@ -167,7 +169,10 @@ class G1_29_ArmController(ArmCommandGate):
             time.sleep(0.002)
 
     def clip_arm_q_target(self, target_q, velocity_limit):
-        current_q = self.get_current_dual_arm_q()
+        # Rate-limit the command trajectory, not its error against feedback.
+        # Re-basing on measured q every tick caps the servo's restoring effort
+        # and makes the target follow a sagging/stalled arm indefinitely.
+        current_q = self._last_command_q
         delta = target_q - current_q
         motion_scale = np.max(np.abs(delta)) / (velocity_limit * self.control_dt)
         cliped_arm_q_target = current_q + delta / max(motion_scale, 1.0)
@@ -177,6 +182,11 @@ class G1_29_ArmController(ArmCommandGate):
         while True:
             epoch = self._command_epoch
             start_time = time.time()
+
+            if epoch != self._trajectory_epoch:
+                # Damping/recovery must never replay an old command ramp.
+                self._last_command_q = self.get_current_dual_arm_q().copy()
+                self._trajectory_epoch = epoch
 
             with self.ctrl_lock:
                 arm_q_target     = self.q_target
@@ -197,7 +207,8 @@ class G1_29_ArmController(ArmCommandGate):
                 self.msg.motor_cmd[id].tau = arm_tauff_target[idx]   
 
             self.msg.crc = self.crc.Crc(self.msg)
-            self._publish_command(epoch)
+            if self._publish_command(epoch):
+                self._last_command_q = cliped_arm_q_target.copy()
             if self._publish_count == 1:
                 logger_mp.info(
                     "[G1_29_ArmController] First rt/arm_sdk command sent "

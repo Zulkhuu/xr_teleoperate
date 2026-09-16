@@ -422,6 +422,9 @@ class GateAndHUDTests(unittest.TestCase):
                     arm._init_command_gate()
                     arm.ctrl_lock = threading.Lock()
                     arm.q_target = arm.tauff_target = np.zeros(14)
+                    arm._last_command_q = arm.q_target.copy()
+                    arm._trajectory_epoch = arm._command_epoch
+                    arm.get_current_dual_arm_q = Mock(return_value=arm.q_target.copy())
                     arm.arm_sdk_weight = 1.
                     arm.motion_mode = arm.simulation_mode = True
                     arm._speed_gradual_max = False

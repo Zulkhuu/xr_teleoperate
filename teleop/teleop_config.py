@@ -31,7 +31,7 @@ def parse_args(argv=None):
                         help='Seconds to wait after hand open/close safety commands.')
     parser.add_argument('--arm-safety-velocity', type=float, default=0.8,
                         help='Arm joint velocity limit used by the pre-teleop and exit safety pose.')
-    parser.add_argument('--arm-safety-timeout', type=float, default=30.0,
+    parser.add_argument('--arm-safety-timeout', type=float, default=10.0,
                         help='Seconds to wait for the arm safety pose.')
     parser.add_argument('--exit-initial-hold', type=float, default=0.8,
                         help='Seconds to hold the current arm pose immediately after exit is requested.')
