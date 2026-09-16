@@ -27,3 +27,6 @@ episode_0*
 
 MUJOCO_LOG.TXT
 scripts/
+
+# Preserve all files in the bundled Neuracore robot description, including images.
+!assets/g1_neuracore/**

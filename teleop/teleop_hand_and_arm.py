@@ -62,6 +62,9 @@ def main(argv=None):
     logger_mp.debug(f"args: {args}")
 
     try:
+        if args.record and args.recording_backend == 'neuracore':
+            from teleop.utils.neuracore_recorder import NeuracoreRecorder
+            recorder = NeuracoreRecorder(args)
         xr.start()
 
         # setup dds communication domains id
@@ -84,6 +87,8 @@ def main(argv=None):
         # All Vuer transports receive camera configuration on the host.
         img_client = ImageClient(host=args.img_server_ip, request_bgr=True)
         camera_config = img_client.get_cam_config()
+        if args.record and args.recording_backend == 'neuracore' and not camera_config['head_camera']['enable_zmq']:
+            raise ValueError('Neuracore RGB recording requires head_camera.enable_zmq=true')
         xr_need_local_img = xr.configure_display(camera_config, hud=True)
 
         # motion mode (G1: Regular mode R1+X, not Running mode R2+A)
@@ -142,7 +147,7 @@ def main(argv=None):
             sim_state_subscriber = start_sim_state_subscribe()
 
         # record + headless / non-headless mode
-        if args.record:
+        if args.record and args.recording_backend == 'episode':
             recorder = EpisodeWriter(task_dir = os.path.join(args.task_dir, args.task_name),
                                      task_goal = args.task_goal,
                                      task_desc = args.task_desc,

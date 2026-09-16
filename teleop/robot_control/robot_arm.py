@@ -162,6 +162,7 @@ class G1_29_ArmController(ArmCommandGate):
             if msg is not None:
                 self.state_received_at = time.monotonic()
                 lowstate = G1_29_LowState()
+                lowstate.timestamp = time.time()
                 for id in range(G1_29_Num_Motors):
                     lowstate.motor_state[id].q  = msg.motor_state[id].q
                     lowstate.motor_state[id].dq = msg.motor_state[id].dq
@@ -241,6 +242,13 @@ class G1_29_ArmController(ArmCommandGate):
     def get_current_motor_q(self):
         '''Return current state q of all body motors.'''
         return np.array([self.lowstate_buffer.GetData().motor_state[id].q for id in G1_29_JointIndex])
+
+    def get_recording_state(self):
+        """Coherent 29-joint snapshot, excluding the six SDK/reserved slots."""
+        state = self.lowstate_buffer.GetData()
+        return dict(timestamp=state.timestamp,
+                    q=[state.motor_state[i].q for i in range(29)],
+                    dq=[state.motor_state[i].dq for i in range(29)])
     
     def get_current_dual_arm_q(self):
         '''Return current state q of the left and right arm motors.'''

@@ -464,6 +464,62 @@ Please refer to the [Repo README](https://github.com/unitreerobotics/dex1_1_serv
 
 Same as simulation but follow the safety warnings above.
 
+### Recording backends
+
+Recording backends are selected with `--record --recording-backend episode|neuracore`.
+`episode` is the default and preserves the existing local EpisodeWriter dataset format.
+The Y-release / keyboard `s` recording controls apply to both backends and only start
+episodes during ACTIVE teleoperation. Pause, tracking loss, damping, and exit finalize
+the active episode.
+
+For Neuracore, install its isolated SDK environment from the repository root:
+
+```bash
+uv sync --project integrations/neuracore --python 3.10
+```
+
+Then append these options to your usual `teleop_hand_and_arm.py` command:
+
+```bash
+--record --recording-backend neuracore --neuracore-dataset "G1 Teleoperation"
+```
+
+This backend requires `--arm G1_29 --ee inspire_ftp`. It invokes Neuracore login
+in the terminal before DDS, keyboard handling, or automatic arm preparation starts,
+then connects the robot model and selects/creates the dataset. The SDK may reuse an
+existing authenticated session. `--task-goal` supplies the episode instruction;
+`--task-name` supplies the dataset name when `--neuracore-dataset` is omitted.
+`--neuracore-python /path/to/python` can select another environment with Neuracore
+17.0.1 installed. Version 16.1.0 uses an obsolete server version-check request;
+run `uv sync --project integrations/neuracore --python 3.10` after updating this
+repository to install the pinned compatible SDK. The separate environment avoids changing teleoperation's NumPy
+dependencies. `--neuracore-upload-timeout` defaults to 300 seconds for model upload.
+
+Each control-loop sample records all **29 measured G1 joint positions and velocities**
+(legs, waist, arms), even with `--upper-body-only`, plus the 14 commanded arm positions.
+The six reserved SDK slots are excluded. Inspire actuator states/targets are preserved
+as `left_hand_state`, `right_hand_state`, `left_hand_target`, and `right_hand_target`
+custom arrays; they are not treated as finger joint angles in the URDF.
+
+RGB streams are `head_camera` (mono) or `head_camera_left`/`head_camera_right` (stereo),
+and each enabled `left_wrist_camera`/`right_wrist_camera`. Head ZMQ must be enabled;
+enable wrist ZMQ to record those cameras. Images are raw camera pixels converted BGR
+to RGB, without HUD overlays or depth. All SDK log calls have explicit Unix timestamps:
+joint state uses host DDS receipt time, while arm targets, hands and RGB use host sample
+time. TeleImager currently exposes no camera capture timestamp, so these are not
+hardware-synchronized streams. Sampling follows `--frequency`; repeated DDS snapshots
+are not logged twice, while RGB records the latest available image at each sample.
+
+Cloud calls execute in a separate worker. Episode finalization/upload runs without
+blocking robot control; a new episode waits until it finishes. Missing frames, worker
+errors or a full sample backlog stop recording with a terminal error. Program cleanup
+waits for outstanding recording uploads after robot shutdown.
+
+The complete supplied Unitree description is bundled in `assets/g1_neuracore`, including
+all meshes and supplementary files. The selected model is
+`g1_29dof_rev_1_0_with_inspire_hand_FTP.urdf`; the temporary `neuracore_logger` example
+directory is not needed at runtime.
+
 ### Quest controls
 
 Use `--input-mode controller` for Quest 3/3S controllers (the USB backends select this by default).

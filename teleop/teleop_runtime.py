@@ -227,6 +227,17 @@ class TeleopRuntime:
         if self.camera_config['right_wrist_camera']['enable_zmq']:
             self.right_image = self.images.get_right_wrist_frame()
         ee = self.hands.snapshot()
+        if getattr(self.args, 'recording_backend', 'episode') == 'neuracore':
+            from teleop.utils.neuracore_recorder import make_sample
+            try:
+                sample = make_sample(self.arm, target, ee,
+                                     dict(head_camera=self.head, left_wrist_camera=self.left_image,
+                                          right_wrist_camera=self.right_image), self.camera_config)
+                self.recorder.add_sample(sample)
+            except Exception:
+                logger.exception('[Neuracore] Recording stopped because data or recorder failed')
+                self.stop_recording()
+            return
         body = self.arm.get_current_motor_q().tolist() if loco_action else []
         colors, depths, states, actions = build_recording_payload(
             self.camera_config, self.head, self.left_image, self.right_image,

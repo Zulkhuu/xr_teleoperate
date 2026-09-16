@@ -1,0 +1,8 @@
+[project]
+name = "xr-teleoperate-neuracore"
+version = "0.1.0"
+requires-python = ">=3.10,<3.13"
+dependencies = ["neuracore==17.0.1", "numpy==2.2.6"]
+
+[tool.uv]
+package = false

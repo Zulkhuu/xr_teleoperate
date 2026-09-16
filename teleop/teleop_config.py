@@ -57,6 +57,15 @@ def parse_args(argv=None):
     parser.add_argument('--affinity', action = 'store_true', help = 'Enable high priority and set CPU affinity mode')
     # record mode and task info
     parser.add_argument('--record', action = 'store_true', help = 'Enable data recording mode')
+    parser.add_argument('--recording-backend', choices=['episode', 'neuracore'], default='episode',
+                        help='Recorder used with --record: episode (existing local format) or neuracore.')
+    from pathlib import Path
+    parser.add_argument('--neuracore-python', default=str(Path(__file__).resolve().parents[1] /
+                        'integrations/neuracore/.venv/bin/python'),
+                        help='Python executable in the isolated Neuracore environment.')
+    parser.add_argument('--neuracore-dataset', default=None, help='Neuracore dataset name (defaults to --task-name).')
+    parser.add_argument('--neuracore-upload-timeout', type=float, default=300.,
+                        help='Neuracore robot model upload timeout in seconds.')
     parser.add_argument('--task-dir', type = str, default = './utils/data/', help = 'path to save data')
     parser.add_argument('--task-name', type = str, default = 'pick cube', help = 'task file name for recording')
     parser.add_argument('--task-goal', type = str, default = 'pick up cube.', help = 'task goal for recording at json file')
@@ -64,6 +73,10 @@ def parse_args(argv=None):
     parser.add_argument('--task-steps', type = str, default = 'step1: do this; step2: do that;', help = 'task steps for recording at json file')
 
     args = parser.parse_args(argv)
+    if args.recording_backend == 'neuracore' and (args.arm != 'G1_29' or args.ee != 'inspire_ftp'):
+        parser.error('Neuracore robot model requires --arm G1_29 --ee inspire_ftp')
+    if args.recording_backend == 'neuracore' and not args.record:
+        parser.error('--recording-backend neuracore requires --record')
     if args.input_mode is None:
         args.input_mode = 'hand' if args.xr == 'vuer' else 'controller'
     if args.display_mode is None:
@@ -73,7 +86,7 @@ def parse_args(argv=None):
         parser.error('--xr-image-scale must be finite and in (0, 1]')
     if not math.isfinite(args.xr_image_offset_y) or not -0.5 <= args.xr_image_offset_y <= 0.5:
         parser.error('--xr-image-offset-y must be finite and in [-0.5, 0.5]')
-    for name in ('frequency', 'xr_tracking_timeout'):
+    for name in ('frequency', 'xr_tracking_timeout', 'neuracore_upload_timeout'):
         value = getattr(args, name)
         if not math.isfinite(value) or value <= 0:
             parser.error(f'--{name.replace("_", "-")} must be finite and positive')
