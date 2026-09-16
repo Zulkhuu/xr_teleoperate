@@ -548,3 +548,10 @@ This code builds upon following open-source code-bases. Please visit the URLs to
   note         = {Accessed: 2026-02}
 }
 ```
+
+### XR connection selection
+
+Use `--xr vuer` (default) for the existing network connection, or
+`--xr vuer_usb` for Quest Browser tracking and robot-camera video over USB/ADB (no separate APK). `--xr meta_quest` is an alias for USB mode. See the
+[XR connection setup guide](docs/xr_connections.md) for USB authorization,
+camera settings, device selection, and launch commands.

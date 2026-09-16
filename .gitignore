@@ -24,3 +24,6 @@ teleop/data/
 episode_0*
 .vscode/
 *.pkl
+
+MUJOCO_LOG.TXT
+scripts/

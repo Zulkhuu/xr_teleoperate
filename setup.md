@@ -1,72 +1,74 @@
-# xr_teleoperate 当前配置与运行流程
+# xr_teleoperate Current Configuration and Run Procedure
 
-本文档记录的是这台 Host 和这台 Unitree G1 当前可用的配置。旧版文档里关于 `pixi`、Dex3、DFX Inspire bridge、`teleimager-server --rs` 的说明已经不适用于当前状态。
+This document records the currently working configuration for this Host and this Unitree G1. Instructions in older documentation concerning `pixi`, Dex3, the DFX Inspire bridge, and `teleimager-server --rs` no longer apply to the current setup.
 
-## 1. 当前硬件和网络
+## 1. Current Hardware and Network
 
-**硬件**
+### Hardware
 
-- 机器人：Unitree G1 EDU，`G1_29`，lock waist
-- 灵巧手：Inspire FTP / RH56DFTP，使用 `--ee=inspire_ftp`
-- 头部相机：Intel RealSense D435i，目前通过 OpenCV camera path 给 teleimager 使用
-- XR：Meta Quest 3S，当前使用 controller 输入，不使用手部 tracking
+- Robot: Unitree G1 EDU, `G1_29`, locked waist
+- Dexterous hands: Inspire FTP / RH56DFTP, using `--ee=inspire_ftp`
+- Head camera: Intel RealSense D435i, currently used by teleimager through the OpenCV camera path
+- XR: Meta Quest 3S, currently using controller input rather than hand tracking
 
-**网络**
+### Network
 
-| 设备 | IP / 接口 | 用途 |
+| Device | IP / Interface | Purpose |
 | --- | --- | --- |
-| Host PC | `eno1 = 192.168.123.222` | 运行 teleop 主程序，接 DDS 和手部 ModbusTCP |
-| G1 PC2 / image server | `192.168.123.164` | 运行 teleimager，提供 RGB 图像 |
+| Host PC | `eno1 = 192.168.123.222` | Runs the main teleop program; connects to DDS and the hand ModbusTCP interface |
+| G1 PC2 / image server | `192.168.123.164` | Runs teleimager and provides RGB images |
 | G1 robot controller | `192.168.123.161` | Unitree motion / mode service |
-| Inspire FTP 左手 | `192.168.123.210:6000` | ModbusTCP |
-| Inspire FTP 右手 | `192.168.123.211:6000` | ModbusTCP |
-| Quest 3S | 与 Host 同一 WiFi | 打开 Vuer 页面 |
+| Inspire FTP left hand | `192.168.123.210:6000` | ModbusTCP |
+| Inspire FTP right hand | `192.168.123.211:6000` | ModbusTCP |
+| Quest 3S | Same Wi-Fi network as the Host | Opens the Vuer page |
 
-机器人 SSH：
+Robot SSH:
 
 ```bash
 ssh unitree@192.168.123.164
-# 密码：123
-# 如果进入后提示 ros: foxy(1) noetic(2)，选 1
+# Password: 123
+# If prompted after login with ros: foxy(1) noetic(2), choose 1
 ```
 
-## 2. Host 环境
+## 2. Host Environment
 
-当前使用 `uv` 和仓库里的 `.venv`，不是 `pixi`。
+The current setup uses `uv` and the repository's `.venv`, not `pixi`.
 
-常用验证：
+Common verification commands:
 
 ```bash
-cd /home/zc1525/xr_teleoperate
+cd /home/zuk/xr_teleoperate
 uv run python -c "import pinocchio, casadi, pymodbus, teleimager, televuer, unitree_sdk2py; print('env ok')"
 uv pip list | grep -E 'inspire-sdkpy|teleimager|televuer|unitree-sdk2py|pymodbus'
 ```
 
-当前关键包应该包括：
+The current key packages should include:
 
-- `teleimager` editable: `/home/zc1525/xr_teleoperate/teleop/teleimager`
-- `televuer` editable: `/home/zc1525/xr_teleoperate/teleop/televuer`
-- `inspire-sdkpy` editable: `/home/zc1525/inspire_hand_ws/inspire_hand_sdk`
+- `teleimager` editable: `/home/zuk/xr_teleoperate/teleop/teleimager`
+- `televuer` editable: `/home/zuk/xr_teleoperate/teleop/televuer`
+- `inspire-sdkpy` editable: `/home/zuk/inspire_hand_ws/inspire_hand_sdk`
 - `unitree-sdk2py`
 - `pymodbus`
 
-如果 DDS 初始化失败，先确认 Host 机器人网口名：
+If DDS initialization fails, first confirm the Host's robot-facing network interface name:
 
 ```bash
 ip addr show eno1
 ```
 
-正常应该能看到 `192.168.123.222/24`。启动 teleop 时使用：
+Normally, you should see `192.168.123.222/24`.
+
+When starting teleop, use:
 
 ```bash
 --network-interface=eno1
 ```
 
-## 3. 启动 RGB 图像服务
+## 3. Start the RGB Image Service
 
-PC2 上当前稳定路径是 OpenCV 模式，不用 `--rs`。之前 `--rs` 会因为 `librealsense2.so.2.50` 缺失失败。
+On PC2, the currently stable path is OpenCV mode; do not use `--rs`. Previously, `--rs` failed because `librealsense2.so.2.50` was missing.
 
-在 Host 上执行：
+Run from the Host:
 
 ```bash
 ssh unitree@192.168.123.164
@@ -76,14 +78,14 @@ nohup ~/.local/bin/teleimager-server > /tmp/teleimager.log 2>&1 &
 tail -f /tmp/teleimager.log
 ```
 
-正常日志应出现类似：
+The normal log should contain something similar to:
 
 ```text
 [OpenCVCamera: head_camera] initialized with 480x640 @ 30 FPS
 head_camera is ready
 ```
 
-如果 RGB 掉了，先在 PC2 上重置 RealSense USB，再重启 teleimager：
+If the RGB feed drops out, first reset the RealSense USB device on PC2, then restart teleimager:
 
 ```bash
 ssh unitree@192.168.123.164
@@ -93,10 +95,10 @@ nohup ~/.local/bin/teleimager-server > /tmp/teleimager.log 2>&1 &
 tail -f /tmp/teleimager.log
 ```
 
-Host 侧快速验证图像：
+Quickly verify the image from the Host side:
 
 ```bash
-cd /home/zc1525/xr_teleoperate/teleop
+cd /home/zuk/xr_teleoperate/teleop
 uv run python - <<'PY'
 import time
 from teleimager.image_client import ImageClient
@@ -109,93 +111,93 @@ c.close()
 PY
 ```
 
-正常输出应包含 `(480, 640, 3)`。
+Normal output should include `(480, 640, 3)`.
 
-## 4. Teleop 启动命令
+## 4. Teleop Startup Commands
 
-### 4.1 推荐：上半身 teleop，下半身保持 Unitree 内置平衡
+### 4.1 Recommended: Upper-body teleop while the lower body remains under Unitree's built-in balancing control
 
-这个模式适合做桌面操作：机器人下半身保持 Regular/AI 的站立平衡，不用 Quest 控制移动。
+This mode is suitable for tabletop manipulation: the robot's lower body remains standing and balanced in Regular/AI mode, and the Quest does not control locomotion.
 
-启动前先确认机器人处于 **Regular/AI mode**，也就是 Unitree 底层运动控制还在接管下半身平衡。不要处于 Damping mode，也不要用不带 `--motion` 的 Debug lowcmd 模式。
+Before starting, first confirm that the robot is in Regular/AI mode, meaning Unitree's low-level motion control is still responsible for lower-body balance. Do not use Damping mode, and do not use Debug lowcmd mode by starting without `--motion`.
 
-关键点：
+Key points:
 
-- 使用 `--motion --upper-body-only`：上半身走 arm SDK，下半身继续由 Unitree 内置控制器保持站立。
-- 使用 `--motion` 但不加 `--upper-body-only`：下半身仍由 Unitree 内置控制器平衡，但速度命令来自 Quest controller。
-- 不使用 `--motion`：程序会调用 `Enter_Debug_Mode()`，这会进入 Debug/SDK lowcmd 路径，不是你想要的“下半身自动站立”模式。
+- Use `--motion --upper-body-only`: the upper body is controlled through the arm SDK, while the lower body remains standing under Unitree's built-in controller.
+- Use `--motion` without `--upper-body-only`: the lower body is still balanced by Unitree's built-in controller, but velocity commands come from the Quest controller.
+- Do not use `--motion`: the program calls `Enter_Debug_Mode()`, entering the Debug/SDK lowcmd path. This is not the desired "lower body automatically remains standing" mode.
 
-然后在 Host 上运行：
+Then run on the Host:
 
 ```bash
-cd /home/zc1525/xr_teleoperate/teleop
+cd /home/zuk/xr_teleoperate/teleop
 uv run python teleop_hand_and_arm.py \
   --arm=G1_29 \
   --ee=inspire_ftp \
   --input-mode=controller \
   --img-server-ip=192.168.123.164 \
-  --network-interface=eno1 \
+  --network-interface=enx207bd2c81d8d \
   --motion \
   --upper-body-only
 ```
 
-说明：
+Explanation:
 
-- `--motion`：使用 Unitree arm SDK 通道控制上肢，避免进入全身 Debug lowcmd 模式。
-- `--upper-body-only`：不发送下半身速度命令，让下半身继续由 Unitree 内置运动/平衡模块保持站立。
-- 退出后程序会尝试切回 AI/remote mode，让遥控器恢复可用。
+- `--motion`: controls the upper limbs through the Unitree arm SDK channel, avoiding whole-body Debug lowcmd mode.
+- `--upper-body-only`: does not send lower-body velocity commands, allowing Unitree's built-in motion/balance module to keep the robot standing.
+- After exit, the program attempts to switch back to AI/remote mode so the physical remote controller can be used again.
 
-### 4.2 Quest controller 控制移动 + 上半身 teleop
+### 4.2 Quest controller locomotion + upper-body teleop
 
-如果你想用 Quest controller 控制机器人移动，去掉 `--upper-body-only`：
+If you want to control robot locomotion using the Quest controller, remove `--upper-body-only`:
 
 ```bash
-cd /home/zc1525/xr_teleoperate/teleop
+cd /home/zuk/xr_teleoperate/teleop
 uv run python teleop_hand_and_arm.py \
   --arm=G1_29 \
   --ee=inspire_ftp \
   --input-mode=controller \
   --img-server-ip=192.168.123.164 \
-  --network-interface=eno1 \
+  --network-interface=enx207bd2c81d8d \
   --motion
 ```
 
-移动映射：
+Locomotion mapping:
 
-- 左摇杆前后：`vx`
-- 左摇杆左右：`vy`
-- 右摇杆左右：`yaw`
-- 最大速度比例：`0.3`
-- 双侧 thumbstick 同时按下：发送 `Damp()`
+- Left joystick forward/backward: `vx`
+- Left joystick left/right: `vy`
+- Right joystick left/right: `yaw`
+- Maximum speed scale: `0.3`
+- Press both thumbsticks simultaneously: send `Damp()`
 
-注意：这个移动不是用 Unitree 物理遥控器控制，而是由 Quest controller 通过 `LocoClientWrapper.Move(vx, vy, vyaw)` 发送给机器人。
+Note: this locomotion is not controlled with the physical Unitree remote. Instead, the Quest controller sends commands to the robot through `LocoClientWrapper.Move(vx, vy, vyaw)`.
 
-## 5. Quest 3S 连接顺序
+## 5. Quest 3S Connection Sequence
 
-推荐顺序：
+Recommended sequence:
 
-1. 先启动 `teleop_hand_and_arm.py`
-2. Quest 浏览器打开 Vuer 页面：
+1. Start `teleop_hand_and_arm.py` first.
+2. Open the Vuer page in the Quest browser:
 
-```text
-https://vuer.ai?grid=False
-```
+   ```text
+   https://vuer.ai?grid=False
+   ```
 
-或者使用终端里打印出的 `Visit: ...` 地址。
+   Alternatively, use the `Visit: ...` address printed in the terminal.
 
-3. 等页面显示 WebSocket connected
-4. 点 **Virtual Reality**，允许 VR 权限
-5. 人和 controller 面向机器人正前方方向，尽量和机器人初始姿态一致
-6. 回到 Host 终端按 `r` 开始
-7. 按 `q` 退出
+3. Wait until the page shows `WebSocket connected`.
+4. Select **Virtual Reality** and allow VR permissions.
+5. The operator and the controllers should face toward the robot's forward direction, aligned as closely as possible with the robot's initial orientation.
+6. Return to the Host terminal and press `r` to start.
+7. Press `q` to exit.
 
-为什么要先进 VR 再按 `r`：
+Why enter VR before pressing `r`:
 
-- 程序在按 `r` 后会采样 controller 当前 pose，并把它 anchor 到机器人当前 wrist pose。
-- 如果 VR session 的世界坐标朝向不对，手会往操作者真实站位方向扭。
-- 当前代码默认使用相对 controller wrist pose；如要退回旧的绝对 wrist pose，可加 `--absolute-wrist-pose`，但不推荐。
+- After `r` is pressed, the program samples the controllers' current poses and anchors them to the robot's current wrist poses.
+- If the VR session's world-coordinate orientation is incorrect, the robot's hands may twist toward the operator's real-world standing position.
+- The current code uses relative controller wrist poses by default. You can return to the old absolute wrist-pose behavior with `--absolute-wrist-pose`, but this is not recommended.
 
-按 `r` 后预期终端日志顺序：
+After pressing `r`, the expected terminal log sequence is:
 
 ```text
 Pre-teleop safety sequence: raise arms to safety pose before opening hands.
@@ -205,98 +207,98 @@ Starting hand controller after arms reached the safety pose.
 ---------------------start Tracking-------------------------
 ```
 
-如果你只是启动了程序、进入了 VR、但还没有按 `r`，手不会打开。这是当前保护逻辑：上电和等待阶段默认保持 close，避免机器人还没举手时先把手指打开。
+If you have only started the program and entered VR but have not yet pressed `r`, the hands will not open. This is the current safety logic: during power-on and the waiting stage, the hands remain closed by default so the fingers do not open before the robot has raised its arms.
 
-## 6. Inspire FTP 手开关逻辑
+## 6. Inspire FTP Hand Open/Close Logic
 
-当前手不是 Dex3，也不是 DFX bridge，而是 Inspire FTP，直接走 ModbusTCP：
+The current hands are not Dex3 and do not use the DFX bridge. They are Inspire FTP hands controlled directly over ModbusTCP:
 
-- 左手：`192.168.123.210:6000`
-- 右手：`192.168.123.211:6000`
-- register `1486`：angle command
-- register `1522`：speed
-- register `1004`：clear error
+- Left hand: `192.168.123.210:6000`
+- Right hand: `192.168.123.211:6000`
+- Register `1486`: angle command
+- Register `1522`: speed
+- Register `1004`: clear error
 
-二值动作：
+Binary actions:
 
-- controller trigger 松开：open
-- controller trigger 按下：close
-- 左 trigger 控左手
-- 右 trigger 控右手
+- Controller trigger released: open
+- Controller trigger pressed: close
+- Left trigger controls the left hand
+- Right trigger controls the right hand
 
-当前目标值：
+Current target values:
 
 ```text
-open  = [1, 1, 1, 1, 1, 1]      -> [1000, 1000, 1000, 1000, 1000, 1000]
-close = [0, 0, 0, 0, 0, 1]      -> [0, 0, 0, 0, 0, 1000]
+open  = [1, 1, 1, 1, 1, 1]  -> [1000, 1000, 1000, 1000, 1000, 1000]
+close = [0, 0, 0, 0, 0, 1]  -> [0, 0, 0, 0, 0, 1000]
 ```
 
-这里是位置 state / angle command，不是加速度。碰到物体后，手会继续尝试到 close 目标；目前没有基于触觉/力反馈的自动减速或自动 hold 逻辑。
+These are position state / angle commands, not acceleration values. After contacting an object, the hand will continue trying to reach the close target. There is currently no tactile- or force-feedback-based automatic slowdown or automatic hold logic.
 
-手部保护顺序：
+Hand safety sequence:
 
-- 上电后：手应保持 close，保护手指
-- 程序等待 `r` 时：默认不启动手 controller，不会提前 open
-- 按 `r` 后：先把双臂抬到安全姿态，再启动手 controller 并 open
-- 按 `q` 后：先 hold 当前姿态，再回安全姿态，再 close 手，再慢慢放回启动姿态，最后 release arm SDK
+- After power-on: the hands should remain closed to protect the fingers.
+- While the program is waiting for `r`: the hand controller is not started by default, so the hands will not open early.
+- After pressing `r`: first raise both arms to a safe pose, then start the hand controller and open the hands.
+- After pressing `q`: first hold the current pose, return to the safe pose, close the hands, slowly return to the startup pose, and finally release the arm SDK.
 
-不要在正常 teleop 启动命令里加：
+Do not add the following option to the normal teleop startup command:
 
 ```bash
 --disable-hand-safety-sequence
 ```
 
-这个参数会跳过当前这套“先举手、再开手、退出先关手”的保护流程。
+This option skips the current safety procedure of "raise the arms before opening the hands, and close the hands first during shutdown."
 
-手动把双手 close：
+To manually close both hands:
 
 ```bash
-cd /home/zc1525/xr_teleoperate
+cd /home/zuk/xr_teleoperate
 uv run python teleop/utils/inspire_ftp_close_hands.py
 ```
 
-如果手没反应，按顺序查：
+If the hands do not respond, check in this order:
 
 ```bash
 ping 192.168.123.210
 ping 192.168.123.211
 nc -vz 192.168.123.210 6000
 nc -vz 192.168.123.211 6000
-cd /home/zc1525/xr_teleoperate
+cd /home/zuk/xr_teleoperate
 uv run python teleop/utils/inspire_ftp_close_hands.py
 ```
 
-## 7. 退出保护逻辑
+## 7. Exit Safety Logic
 
-当前 `q` 退出顺序已经改成防止手臂突然掉下：
+The current `q` shutdown sequence has been changed to prevent the arms from suddenly dropping:
 
-1. hold 当前 teleop 手臂姿态，默认 `0.8s`
-2. 低速回到安全姿态，默认速度 `--arm-safety-velocity=0.8`
-3. hold 安全姿态，默认 `1.0s`
-4. close 双手
-5. `--motion` 下，用 SDK 慢慢放回程序启动时记录的站立手臂姿态，默认 `--exit-lower-velocity=0.35`
-6. hold 最终姿态，默认 `1.0s`
-7. 用 `--exit-release-duration=12.0` 慢慢 release arm SDK
-8. 切回 AI/remote mode
+1. Hold the current teleop arm pose, default `0.8s`.
+2. Return slowly to the safety pose, using default velocity `--arm-safety-velocity=0.8`.
+3. Hold the safety pose, default `1.0s`.
+4. Close both hands.
+5. With `--motion`, use the SDK to slowly return the arms to the standing arm pose recorded when the program started, using default `--exit-lower-velocity=0.35`.
+6. Hold the final pose, default `1.0s`.
+7. Slowly release the arm SDK over `--exit-release-duration=12.0`.
+8. Switch back to AI/remote mode.
 
-如果放下仍然太快，启动时加：
+If lowering is still too fast, add this when starting:
 
 ```bash
 --exit-lower-velocity=0.2 --exit-release-duration=18
 ```
 
-如果只想调试，不想退出时放回启动姿态：
+If you only want to debug and do not want the arms to return to the startup pose when exiting:
 
 ```bash
 --disable-exit-lower
 ```
 
-## 8. 录制数据
+## 8. Data Recording
 
-启动时加 `--record` 和任务信息：
+Add `--record` and task information when starting:
 
 ```bash
-cd /home/zc1525/xr_teleoperate/teleop
+cd /home/zuk/xr_teleoperate/teleop
 uv run python teleop_hand_and_arm.py \
   --arm=G1_29 \
   --ee=inspire_ftp \
@@ -306,94 +308,96 @@ uv run python teleop_hand_and_arm.py \
   --motion \
   --upper-body-only \
   --record \
-  --task-dir=/home/zc1525/xr_teleoperate/records \
+  --task-dir=/home/zuk/xr_teleoperate/records \
   --task-name=g1_inspire_teleop_test \
   --task-goal="teleoperate G1 with Inspire FTP hand" \
   --task-desc="Quest controller teleoperation with RGB observation" \
   --task-steps="start teleop; manipulate object; save episode"
 ```
 
-录制流程：
+Recording workflow:
 
-- 按 `r` 开始 teleop
-- 按 `s` 开始录制
-- 再按 `s` 保存当前 episode
-- 按 `q` 退出
+- Press `r` to start teleop.
+- Press `s` to start recording.
+- Press `s` again to save the current episode.
+- Press `q` to exit.
 
-数据默认保存到：
+By default, data is saved to:
 
 ```text
-/home/zc1525/xr_teleoperate/records/<task-name>/episode_0000/
+/home/zuk/xr_teleoperate/records/<task-name>/episode_0000/
 ```
 
-当前记录内容：
+Currently recorded data:
 
-- `colors/color_0`：头部 RGB，30 Hz，`640x480`
-- `states.left_arm/right_arm.qpos`：左右臂当前关节状态
-- `actions.left_arm/right_arm.qpos`：IK 输出目标关节
-- `states.left_ee/right_ee.qpos`：手状态数组
-- `actions.left_ee/right_ee.qpos`：手 open/close action
-- full locomotion 模式下：`actions.body.qpos = [vx, vy, vyaw]`
-- full locomotion 模式下：`states.body.qpos` 为 35 维全身 motor qpos
+- `colors/color_0`: head RGB, 30 Hz, `640x480`
+- `states.left_arm/right_arm.qpos`: current left/right arm joint states
+- `actions.left_arm/right_arm.qpos`: IK output target joints
+- `states.left_ee/right_ee.qpos`: hand state arrays
+- `actions.left_ee/right_ee.qpos`: hand open/close actions
+- In full locomotion mode: `actions.body.qpos = [vx, vy, vyaw]`
+- In full locomotion mode: `states.body.qpos` is the 35-dimensional whole-body motor qpos
 
-当前不记录：
+Currently not recorded:
 
 - depth
 - wrist camera
 - torque
 - qvel
 - raw Quest pose
-- tactile
+- tactile data
 
-录制频率：
+Recording frequency:
 
 ```text
---frequency 默认 30.0 Hz
+--frequency defaults to 30.0 Hz
 1 step = 1 / 30 = 0.033333 s
 ```
 
-## 9. 常见问题
+## 9. Common Issues
 
-### 9.1 启动时报 CycloneDDS interface error
+### 9.1 CycloneDDS interface error at startup
 
-确认网卡名：
+Confirm the network interface name:
 
 ```bash
 ip addr
 ```
 
-`eno` 是错的，当前 Host 应用：
+`eno` is incorrect. The current Host should use:
 
 ```bash
 --network-interface=eno1
 ```
 
-如果看到：
+If you see:
 
 ```text
 /tmp/cdds.LOG: cannot open for writing
 ```
 
-一般不是主因；真正的问题通常是 DDS interface 选错或权限/环境问题。
+this is generally not the main cause. The real problem is usually an incorrect DDS interface selection or a permissions/environment issue.
 
-### 9.2 RGB 进 VR 后黑屏
+### 9.2 Black screen in VR after starting RGB
 
-先确认 PC2 teleimager 正在输出 OpenCV head camera：
+First confirm that PC2 teleimager is outputting the OpenCV head camera:
 
 ```bash
 ssh unitree@192.168.123.164
 tail -50 /tmp/teleimager.log
 ```
 
-再用第 3 节 Host 侧 Python 验证图像是否能拿到 `(480, 640, 3)`。
+Then use the Host-side Python verification from Section 3 and confirm that it can retrieve an image with shape `(480, 640, 3)`.
 
-### 9.3 Controller 一按 r 手臂往人站的位置扭
+### 9.3 Arms twist toward where the operator is standing immediately after pressing `r`
 
-原因通常是 Quest/OpenXR 世界坐标朝向和机器人坐标朝向没对齐。进入 **Virtual Reality** 的时候，人和 controller 要面向机器人正前方，然后再按 `r`。当前代码会把 controller 起始 pose anchor 到机器人当前 wrist pose，已经比旧的 absolute pose 稳定。
+The usual cause is that the Quest/OpenXR world-coordinate orientation and the robot coordinate orientation are not aligned. When entering Virtual Reality, the operator and controllers should face the robot's forward direction, and only then should `r` be pressed.
 
-### 9.4 手没动作
+The current code anchors the initial controller poses to the robot's current wrist poses, which is already more stable than the old absolute-pose method.
 
-当前是 FTP，不需要 PC2 上跑 DFX bridge。先查网络和端口：
+### 9.4 Hands do not move
+
+The current hands are FTP hands, so there is no need to run a DFX bridge on PC2. First check the network and ports:
 
 ```bash
 ping 192.168.123.210
@@ -402,14 +406,14 @@ nc -vz 192.168.123.210 6000
 nc -vz 192.168.123.211 6000
 ```
 
-再手动 close 测试：
+Then test manual closing:
 
 ```bash
-cd /home/zc1525/xr_teleoperate
+cd /home/zuk/xr_teleoperate
 uv run python teleop/utils/inspire_ftp_close_hands.py
 ```
 
-如果按 `r` 后没有看到手打开，先看终端是否出现这些日志：
+If the hands do not open after pressing `r`, first check whether the terminal contains these logs:
 
 ```text
 Starting hand controller after arms reached the safety pose.
@@ -419,26 +423,27 @@ Starting hand controller after arms reached the safety pose.
 [Inspire safety] open both hands.
 ```
 
-如果没有 `Connected ... FTP hand`，问题是手的网络/电源/端口。  
-如果有 `open both hands` 但手不动，再用手动 close/open 测试脚本或检查手当前是否已经处于 open。
+If there is no `Connected ... FTP hand` message, the problem is with the hands' network, power, or port.
 
-### 9.5 遥控器退出后没恢复
+If `open both hands` appears but the hands do not move, use the manual close/open test script or check whether the hands are already in the open state.
 
-按 `q` 后程序会 release arm SDK 并调用 `Exit_Debug_Mode()` 切回 AI/remote mode。等待日志出现：
+### 9.5 Physical remote controller does not recover after exit
+
+After `q` is pressed, the program releases the arm SDK and calls `Exit_Debug_Mode()` to switch back to AI/remote mode. Wait for these logs:
 
 ```text
 release arm sdk mode OK
 Switch to AI/remote mode: Success
 ```
 
-如果仍不能用遥控器，手动用 Unitree app 或遥控器切回 Regular/AI mode。
+If the physical remote still cannot be used, manually switch the robot back to Regular/AI mode using the Unitree app or remote controller.
 
-## 10. 当前推荐启动模板
+## 10. Current Recommended Startup Templates
 
-日常上半身 teleop：
+Daily upper-body teleop:
 
 ```bash
-cd /home/zc1525/xr_teleoperate/teleop
+cd /home/zuk/xr_teleoperate/teleop
 uv run python teleop_hand_and_arm.py \
   --arm=G1_29 \
   --ee=inspire_ftp \
@@ -451,10 +456,10 @@ uv run python teleop_hand_and_arm.py \
   --exit-release-duration=18
 ```
 
-需要 Quest controller 移动时：
+When Quest-controller locomotion is required:
 
 ```bash
-cd /home/zc1525/xr_teleoperate/teleop
+cd /home/zuk/xr_teleoperate/teleop
 uv run python teleop_hand_and_arm.py \
   --arm=G1_29 \
   --ee=inspire_ftp \
