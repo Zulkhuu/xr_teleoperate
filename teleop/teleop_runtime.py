@@ -24,11 +24,12 @@ class PreparationCancelled(Exception):
 class TeleopRuntime:
     def __init__(self, args, xr, arm, ik, hands, images, camera_config,
                  local_image, recorder=None, loco=None, damping=None,
-                 keyboard=None, sim_state=None, prepared=None):
+                 keyboard=None, sim_state=None, prepared=None, d405=None):
         self.args, self.xr, self.arm, self.ik, self.hands = args, xr, arm, ik, hands
         self.images, self.camera_config, self.local_image = images, camera_config, local_image
         self.recorder, self.loco, self.damping = recorder, loco, damping
         self.keyboard, self.sim_state = keyboard, sim_state
+        self.d405 = d405
         self.machine = TeleopStateMachine()
         self.buttons = QuestControllerInput()
         self.xr_anchor = self.robot_anchor = None
@@ -209,6 +210,11 @@ class TeleopRuntime:
                 binocular=self.camera_config['head_camera']['binocular'],
                 scale=getattr(self.args, 'xr_image_scale', 1.0),
                 offset_y=getattr(self.args, 'xr_image_offset_y', 0.0))
+            if self.d405 is not None:
+                if self.d405.capture_local is False and self.camera_config['right_wrist_camera']['enable_zmq']:
+                    wrist = self.images.get_right_wrist_frame()
+                    self.d405.update(None if wrist is None else wrist.bgr)
+                image = self.d405.compose(image)
             draw_hud(image, self.machine.state, tracking,
                      recording=self.machine.recording,
                      elapsed=time.monotonic() - self.record_started,

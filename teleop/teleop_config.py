@@ -23,6 +23,10 @@ def parse_args(argv=None):
     parser.add_argument('--ee', type=str, choices=['dex1', 'dex3', 'inspire_ftp', 'inspire_dfx', 'brainco'], help='Select end effector controller')
     parser.add_argument('--img-server-ip', type=str, default='192.168.123.164', help='IP address of image server, used by teleimager and televuer')
     parser.add_argument('--network-interface', type=str, default=None, help='Network interface for dds communication, e.g., eth0, wlan0. If None, use default interface.')
+    parser.add_argument('--right-wrist-d405-serial', default=None,
+                        help='Optional Intel RealSense D405 serial for the right-wrist RGB overlay.')
+    parser.add_argument('--right-wrist-d405-overlay-width', type=float, default=0.28,
+                        help='D405 overlay width as a fraction of the rendered image (default: 0.28).')
     # mode flags
     parser.add_argument('--motion', action = 'store_true', help = 'Enable motion control mode')
     parser.add_argument('--upper-body-only', action='store_true',
@@ -86,6 +90,8 @@ def parse_args(argv=None):
         parser.error('--xr-image-scale must be finite and in (0, 1]')
     if not math.isfinite(args.xr_image_offset_y) or not -0.5 <= args.xr_image_offset_y <= 0.5:
         parser.error('--xr-image-offset-y must be finite and in [-0.5, 0.5]')
+    if not math.isfinite(args.right_wrist_d405_overlay_width) or not 0.05 <= args.right_wrist_d405_overlay_width <= 0.5:
+        parser.error('--right-wrist-d405-overlay-width must be finite and in [0.05, 0.5]')
     for name in ('frequency', 'xr_tracking_timeout', 'neuracore_upload_timeout'):
         value = getattr(args, name)
         if not math.isfinite(value) or value <= 0:

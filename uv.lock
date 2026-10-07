@@ -1467,6 +1467,16 @@ wheels = [
 ]
 
 [[package]]
+name = "pyrealsense2"
+version = "2.58.4.10922"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1a/47/6f4bcc2ee1fbe81c058817d585143932d2a7fc2fcfa54f99c6432a45ce62/pyrealsense2-2.58.4.10922-cp310-cp310-manylinux1_x86_64.whl", hash = "sha256:809d48b329890594ab158c924537d7ddd6b15acab0aa22d6ba29e974f09ddc9d", size = 13096567, upload-time = "2026-08-30T08:33:54.141Z" },
+    { url = "https://files.pythonhosted.org/packages/28/80/93b0dba660e9693c9355562ac204a7bc21c11ba485d4bb09283f74d3d4f4/pyrealsense2-2.58.4.10922-cp310-cp310-manylinux2014_aarch64.whl", hash = "sha256:4f9b615c9dc4be3f49d72977c5f70f3ccf2234edb2cd82e9f5d0c32077ec2b32", size = 6531837, upload-time = "2026-08-30T08:34:02.949Z" },
+    { url = "https://files.pythonhosted.org/packages/e5/eb/dad4fe44f8c6f7f14369077fdf3496139668b0f6a2d833c741be9d6c4763/pyrealsense2-2.58.4.10922-cp310-cp310-win_amd64.whl", hash = "sha256:f25a0600ffc53729167c9770d7c68264cb7cf78f453ab0a305dae4aa7edd9310", size = 9171683, upload-time = "2026-08-30T08:34:12.046Z" },
+]
+
+[[package]]
 name = "python-dateutil"
 version = "2.9.0.post0"
 source = { registry = "https://pypi.org/simple" }
@@ -1933,6 +1943,7 @@ dependencies = [
     { name = "nlopt" },
     { name = "params-proto" },
     { name = "pymodbus" },
+    { name = "pyrealsense2" },
     { name = "pytransform3d" },
     { name = "pyyaml" },
     { name = "rerun-sdk" },
@@ -1956,6 +1967,7 @@ requires-dist = [
     { name = "nlopt", specifier = ">=2.6.1,<2.8.0" },
     { name = "params-proto", specifier = "==2.13.2" },
     { name = "pymodbus", specifier = "==3.6.9" },
+    { name = "pyrealsense2", specifier = ">=2.55.1" },
     { name = "pytransform3d", specifier = ">=3.5.0" },
     { name = "pyyaml", specifier = ">=6.0.0" },
     { name = "rerun-sdk", specifier = "==0.20.1" },

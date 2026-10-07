@@ -547,6 +547,29 @@ The compact OpenCV HUD repeats in each stereo eye and is drawn on a copy; datase
 
 The camera view defaults to full size with no vertical offset. HUD status, instructions, and recording information are centered near the bottom of each eye, with a 12% lower margin for headset visibility. Optional `--xr-image-scale` and `--xr-image-offset-y` settings adjust display pixels without changing tracking coordinates; use `--xr-image-scale 1 --xr-image-offset-y 0` for the default full-size view.
 
+The optional right-wrist Intel RealSense D405 RGB overlay starts automatically with
+teleoperation and appears in the bottom-right of the rendered image at 28% of the
+image width. It uses a background capture thread and never blocks the XR loop. Select
+a specific camera when multiple RealSense devices are connected:
+
+```bash
+--right-wrist-d405-serial 123456789
+```
+
+The default stream is 640x480 BGR at 30 FPS. Run `uv sync` before use so
+`pyrealsense2` is available. If the D405 is disconnected, unavailable, or produces
+no frames, teleoperation continues and a warning is logged. The worker stops during
+program cleanup. The overlay is display-only and is composed after the raw head frame
+is copied, so existing recording data and the main image are unchanged. Adjust its
+width with `--right-wrist-d405-overlay-width 0.25` through `0.50`.
+
+When the D405 is connected to the G1, configure the G1's `cam_config_server.yaml`
+right-wrist entry with `type: realsense`, `serial_number: 260622270911` (your
+serial), `enable_zmq: true`, and start the image server with `--rs`. The teleop
+client then uses the existing remote right-wrist ZMQ frame; it does not expect the
+camera to be plugged into the laptop. The client log should say
+`[D405] Using the TeleImager right-wrist RGB stream`.
+
 Keyboard/IPC debugging fallback uses the same guards: **b** anchor, **r** prepare initially or activate after anchoring (explicit keyboard substitute for held X), **s** recording toggle, **p** pause, **q** graceful exit. Hand-tracking users use this fallback. Stopping recording no longer resets the simulation, since recording controls must not move the robot.
 
 Before hardware use, verify pause/damping latency, actual G1 damping and recovery in debug/motion modes, FK frame directions, hand preparation, activation ramp, recording finalization, and mono/stereo HUD readability with G1 + Quest 3/3S. Polling/IK/network latency still bounds response time; this application interface does not replace the physical emergency stop.

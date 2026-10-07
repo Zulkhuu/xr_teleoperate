@@ -59,6 +59,7 @@ def main(argv=None):
     loco_wrapper = damping_wrapper = None
     robot_initialized = False
     end_effector = None
+    d405 = None
     logger_mp.debug(f"args: {args}")
 
     try:
@@ -87,6 +88,20 @@ def main(argv=None):
         # All Vuer transports receive camera configuration on the host.
         img_client = ImageClient(host=args.img_server_ip, request_bgr=True)
         camera_config = img_client.get_cam_config()
+        if isinstance(camera_config, dict):
+            from teleop.utils.realsense_overlay import RealSenseRgbOverlay
+            wrist_camera = camera_config['right_wrist_camera']
+            remote_realsense = wrist_camera.get('type') in ('realsense', 'realsense_rgbd')
+            if remote_realsense and not wrist_camera.get('enable_zmq', False):
+                logger_mp.warning(
+                    '[D405] Right-wrist RealSense is configured on the image server, '
+                    'but right_wrist_camera.enable_zmq is false; enable its ZMQ stream '
+                    'and restart teleimager to show the overlay.')
+            d405 = RealSenseRgbOverlay(
+                serial=args.right_wrist_d405_serial,
+                width_fraction=args.right_wrist_d405_overlay_width,
+                capture_local=not (wrist_camera.get('enable_zmq', False) or remote_realsense))
+            d405.start()
         if args.record and args.recording_backend == 'neuracore' and not camera_config['head_camera']['enable_zmq']:
             raise ValueError('Neuracore RGB recording requires head_camera.enable_zmq=true')
         xr_need_local_img = xr.configure_display(camera_config, hud=True)
@@ -170,6 +185,7 @@ def main(argv=None):
             damping=damping_wrapper, keyboard=operator_commands,
             sim_state=sim_state_subscriber,
             prepared=True,
+            d405=d405,
         )
         _runtime.ever_activated = True  # preserve the established graceful exit path after startup preparation
         _runtime.run()
@@ -220,6 +236,12 @@ def main(argv=None):
             xr.close()
         except Exception as e:
             logger_mp.error(f"Failed to close televuer wrapper: {e}")
+
+        try:
+            if d405 is not None:
+                d405.close()
+        except Exception as e:
+            logger_mp.error(f"Failed to close D405 overlay: {e}")
 
         try:
             if sim_state_subscriber is not None:
