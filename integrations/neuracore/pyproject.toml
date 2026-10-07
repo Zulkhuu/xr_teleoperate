@@ -2,7 +2,7 @@
 name = "xr-teleoperate-neuracore"
 version = "0.1.0"
 requires-python = ">=3.10,<3.13"
-dependencies = ["neuracore==17.0.1", "numpy==2.2.6"]
+dependencies = ["neuracore==18.0.0", "neuracore-types>=11.14.0,<12.0.0", "numpy==2.2.6"]
 
 [tool.uv]
 package = false

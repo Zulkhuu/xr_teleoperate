@@ -809,7 +809,7 @@ wheels = [
 
 [[package]]
 name = "neuracore"
-version = "17.0.1"
+version = "18.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -836,23 +836,23 @@ dependencies = [
     { name = "wget" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8b/63/bd51a46fd0a68e995c375caa8d16ccd6d0aea85112f891b9c24752b647b1/neuracore-17.0.1-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:6ff7b9e0a84e5a0ad7e7ace5a37f36bcf2dba0b68909c7afedba71aa4150032e", size = 6970985, upload-time = "2026-09-10T14:07:52.244Z" },
-    { url = "https://files.pythonhosted.org/packages/ee/37/7cfc8718a7f055fcff2ffd1407aa2a19da4f59ef6d57877ee479321e0e76/neuracore-17.0.1-cp310-cp310-macosx_11_0_x86_64.whl", hash = "sha256:75a5911ee92e0f8a3f1f5ab21dcb8bf38c639b64ee283fdd0c4e6752ff13e59f", size = 7341899, upload-time = "2026-09-10T14:07:54.525Z" },
-    { url = "https://files.pythonhosted.org/packages/2a/8a/f4d7113d7c01420f52e86ccab929bbbba88ce3c53582e0458fb749239cf4/neuracore-17.0.1-cp310-cp310-manylinux_2_28_aarch64.whl", hash = "sha256:4bfead16b8c6bfc28c1d656e1ff6141c0685eede45a9db5389b6d67d65c59cd8", size = 7359123, upload-time = "2026-09-10T14:07:56.577Z" },
-    { url = "https://files.pythonhosted.org/packages/a2/1f/7b0387b4346198d5109b5f942f59fa2506036c98edbf16de5942c6f6ec1b/neuracore-17.0.1-cp310-cp310-manylinux_2_28_x86_64.whl", hash = "sha256:7ed34ab481a1e0ddcddef4e2d39b44896d1939272d6eb62f5b7550fe62a00e03", size = 7663704, upload-time = "2026-09-10T14:07:58.413Z" },
-    { url = "https://files.pythonhosted.org/packages/0c/44/2680a9e093ddf3ca5dca287b02e536cabc9520d17abf479acd3e61050dea/neuracore-17.0.1-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:5296dd635d742092c4b61ddf7966333e8347235abe91a855339d3d6ccb88f26a", size = 6970968, upload-time = "2026-09-10T14:08:00.409Z" },
-    { url = "https://files.pythonhosted.org/packages/6b/75/4333ea071de3b4574715d3ca4ca78329de8aebb9ec695a2434db5c5548ea/neuracore-17.0.1-cp311-cp311-macosx_11_0_x86_64.whl", hash = "sha256:a89d8f914dcae17bf345855fc9008ad85d881906bebd4b65557709c232bf2dd6", size = 7341901, upload-time = "2026-09-10T14:08:02.192Z" },
-    { url = "https://files.pythonhosted.org/packages/96/11/425650522fcc3a84cc83e71d8ad961faf8839bc59fa674ab7fcdf09cea17/neuracore-17.0.1-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:b2c7a7f4d2552723b29ea54cbffee5ba455d5c0599317e35ba754ebc6f2c9b9c", size = 7358992, upload-time = "2026-09-10T14:08:03.983Z" },
-    { url = "https://files.pythonhosted.org/packages/3e/3c/826149f6a1f196d2cc32fdf21d04a9f3a13ecae8f04a6583b93132c41609/neuracore-17.0.1-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:784aa54fb1c6ff0f1f1c4fce704bcaf5467560372c45a0cb5d4a10cdcb401e88", size = 7663652, upload-time = "2026-09-10T14:08:05.631Z" },
-    { url = "https://files.pythonhosted.org/packages/3d/71/1cfa99444366a17497d746f57dc301943a057470b6278631b8f2a1d6ef84/neuracore-17.0.1-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:7792b6f373985e2c01b59f6070d1b1ed9b6baa529ac1c05e2375fe514105c18b", size = 6970501, upload-time = "2026-09-10T14:08:07.303Z" },
-    { url = "https://files.pythonhosted.org/packages/8a/20/94f258d7e49df5ff26fb2d49d123e9597f4129e61769a1f914db0bf0cc55/neuracore-17.0.1-cp312-cp312-macosx_11_0_x86_64.whl", hash = "sha256:af40220f4d0ccd95f02ffb3ae08a9a2be93ad6d5a951ca00d8b5a09c9567cf6e", size = 7343083, upload-time = "2026-09-10T14:08:09.007Z" },
-    { url = "https://files.pythonhosted.org/packages/1e/3e/2d066ea284eedcf9e44baf9856295a013cefd0be6956548757be48e0435c/neuracore-17.0.1-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:5eea78271e3cab74dd6b7221a62b7c17fd99e4cf1bd31b8bf01adb4b3a9ccf6d", size = 7359128, upload-time = "2026-09-10T14:08:10.543Z" },
-    { url = "https://files.pythonhosted.org/packages/d1/e1/8394147ddb19a98c0d68044737800f2e09b8f1da542f8b1163f1cfbcf99e/neuracore-17.0.1-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:4f6f00929bbadf56c64513be4fb4de277f43ab736d8a7e9c29f48cc7e23a7ee3", size = 7666079, upload-time = "2026-09-10T14:08:12.364Z" },
+    { url = "https://files.pythonhosted.org/packages/53/05/d16fe89e7898911434051a529342b13f6ecb63c375a1689597a971857a6a/neuracore-18.0.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:0de0ed23fc9ad4efff5cebdb11e5c9e2f619c485cfd8dc424315c6c09d8f898f", size = 7496753, upload-time = "2026-10-03T14:23:16.444Z" },
+    { url = "https://files.pythonhosted.org/packages/d3/e9/86334ef7566da5ef42e784f1683246ee52e4d131355aec68efa53117545b/neuracore-18.0.0-cp310-cp310-macosx_11_0_x86_64.whl", hash = "sha256:643b52e4774a53595d343ab8ed9b692e4f271c0c14f9fe44c69e3bfd0bcd07b0", size = 7914609, upload-time = "2026-10-03T14:23:18.329Z" },
+    { url = "https://files.pythonhosted.org/packages/56/05/5f0b1d05cbbf603de3275a3e34c072ebae1d2b0fe3e9f67514ad8df9ca4b/neuracore-18.0.0-cp310-cp310-manylinux_2_28_aarch64.whl", hash = "sha256:b8820cdfc4c3e77a2ef5afaceb446d5ffcf641bee3c0a828e019307efcf89591", size = 7940178, upload-time = "2026-10-03T14:23:20.035Z" },
+    { url = "https://files.pythonhosted.org/packages/80/5e/080aecb6f5e9d6db76970ae7b30acd3eb77b31def613fe545e0cc7f6d094/neuracore-18.0.0-cp310-cp310-manylinux_2_28_x86_64.whl", hash = "sha256:7a4c11ae43679fe09592261625d23bb57ef6251774c0c7849228cd2d4c788de0", size = 8266875, upload-time = "2026-10-03T14:23:22.324Z" },
+    { url = "https://files.pythonhosted.org/packages/cd/6e/0131cf0fc83bb67d8521f69c3190c2bb50d4ecf8cf77fae19c40dd529ecb/neuracore-18.0.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:7c9ef7a81d0a9c47f49c93553b96765ae8718f32a0f282f04fe655ce546a1a68", size = 7496518, upload-time = "2026-10-03T14:23:24.325Z" },
+    { url = "https://files.pythonhosted.org/packages/ce/37/cdb031f860eee036eaae55e5f53405c014d9b886e7d6f89b1fe559b89153/neuracore-18.0.0-cp311-cp311-macosx_11_0_x86_64.whl", hash = "sha256:8e284a417944d9be2d7eaf162c9081314222edbd3089a3859c266ef43816e046", size = 7914421, upload-time = "2026-10-03T14:23:25.882Z" },
+    { url = "https://files.pythonhosted.org/packages/37/56/74aa00db8ce771c6798944fd5f0b13e2cee887df6c953e3ca2b719627cd4/neuracore-18.0.0-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:41cfb6e2223c8c7e2c585e0a600713f4de809930612009843a719c274a3e2e58", size = 7940046, upload-time = "2026-10-03T14:23:27.293Z" },
+    { url = "https://files.pythonhosted.org/packages/8e/c3/c8576324797c32bf3867f16db5368380895d488faa70b813ed924ebfebf1/neuracore-18.0.0-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:bba8a1446110f77a22bb8e9149475bbcff502a8804d41c11efa12f4a95731eaa", size = 8267030, upload-time = "2026-10-03T14:23:28.914Z" },
+    { url = "https://files.pythonhosted.org/packages/da/60/10739558cca63614d2cb9b8627125a28426a6aefb6642f3c26d962a943aa/neuracore-18.0.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:38853bde2f0c55a6391cdb7322e174521a6a4deea2f55f8e1d12f1c3895e140f", size = 7497805, upload-time = "2026-10-03T14:23:30.394Z" },
+    { url = "https://files.pythonhosted.org/packages/07/bc/a737d4e865f371bf1695e4ac02bc4af5f09f37938996f62f23aa89a6575d/neuracore-18.0.0-cp312-cp312-macosx_11_0_x86_64.whl", hash = "sha256:0272f6c7fea2fc6197dbcc692678a4821e19d6464da1f375f72ff0f2efb60885", size = 7911215, upload-time = "2026-10-03T14:23:32.074Z" },
+    { url = "https://files.pythonhosted.org/packages/0e/3c/f1c1f501edbe0d7d569f8854d315adf9c4d098897144bcdb536d4c71c072/neuracore-18.0.0-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:0137de2abb51e9dbfee7edab5ff1641399a53dad6603f54d76da5f3816d14610", size = 7938465, upload-time = "2026-10-03T14:23:34.284Z" },
+    { url = "https://files.pythonhosted.org/packages/b7/51/2e466b40bfa15f4bd6bc86d04f8f0d8a50b7ba7abfe8ac363b9863248d0e/neuracore-18.0.0-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:b88d1c78aa35c3677ced7be316946e9ac862672d391138719472cc5dd83fdb27", size = 8266949, upload-time = "2026-10-03T14:23:35.92Z" },
 ]
 
 [[package]]
 name = "neuracore-types"
-version = "11.11.0"
+version = "11.16.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "grpcio-tools" },
@@ -866,9 +866,9 @@ dependencies = [
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
     { name = "scipy", version = "1.18.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/94/ef/a18eefb06790c6f1acb823122859df4bb09b2bc91a1ae8f9531a554efdd6/neuracore_types-11.11.0.tar.gz", hash = "sha256:7aa3a1747bb5bd6a26be89aec5b083a3d36f2de2da86e5a1714298e0bd0a9931", size = 87092, upload-time = "2026-09-16T08:49:29.801Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/fe/d1/748211ca7596e59cfe115c45876a90a4ae9ccb18074bf21f5e9f57b11d2c/neuracore_types-11.16.0.tar.gz", hash = "sha256:1850650a21e19b4c7e033fcf70d4335881909ad562b831d30ca381529a39312a", size = 91858, upload-time = "2026-10-03T12:50:37.435Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8c/3b/ea766db6a86a5decb593ac5967ea803fbb54d86d51c864ceb730f9eb77bf/neuracore_types-11.11.0-py3-none-any.whl", hash = "sha256:1d4b023396a11768f9819d5cb820bb70940ff182579a3e957a02b635cc44fdcf", size = 77505, upload-time = "2026-09-16T08:49:28.672Z" },
+    { url = "https://files.pythonhosted.org/packages/38/76/91b8e787f10a0f83894ae23bd72a840f97aea52711eb7e1b188cc8621ab3/neuracore_types-11.16.0-py3-none-any.whl", hash = "sha256:5b2d0b32e97782be2dd3b9faf88ccbd9895580def96d322e9a0aa558ad328101", size = 81814, upload-time = "2026-10-03T12:50:36.201Z" },
 ]
 
 [[package]]
@@ -1784,12 +1784,14 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "neuracore" },
+    { name = "neuracore-types" },
     { name = "numpy" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "neuracore", specifier = "==17.0.1" },
+    { name = "neuracore", specifier = "==18.0.0" },
+    { name = "neuracore-types", specifier = ">=11.14.0,<12.0.0" },
     { name = "numpy", specifier = "==2.2.6" },
 ]
 

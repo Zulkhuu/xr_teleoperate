@@ -490,9 +490,9 @@ then connects the robot model and selects/creates the dataset. The SDK may reuse
 existing authenticated session. `--task-goal` supplies the episode instruction;
 `--task-name` supplies the dataset name when `--neuracore-dataset` is omitted.
 `--neuracore-python /path/to/python` can select another environment with Neuracore
-17.0.1 installed. Version 16.1.0 uses an obsolete server version-check request;
-run `uv sync --project integrations/neuracore --python 3.10` after updating this
-repository to install the pinned compatible SDK. The separate environment avoids changing teleoperation's NumPy
+18.0.0 with Neuracore Types 11.14 or newer installed. Older clients use obsolete
+server version-check requests; run `uv sync --project integrations/neuracore --python 3.10`
+after updating this repository to install the pinned compatible SDK. The separate environment avoids changing teleoperation's NumPy
 dependencies. `--neuracore-upload-timeout` defaults to 300 seconds for model upload.
 
 Each control-loop sample records all **29 measured G1 joint positions and velocities**
