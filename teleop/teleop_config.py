@@ -11,8 +11,8 @@ def parse_args(argv=None):
     parser.add_argument('--adb-path', default='adb', help='ADB executable for USB mode.')
     parser.add_argument('--xr-tracking-timeout', type=float, default=0.5,
                         help='Maximum tracking age in seconds before stopping teleoperation.')
-    parser.add_argument('--xr-image-scale', type=float, default=1.0,
-                        help='Per-eye camera image scale inside the XR display (0 < scale <= 1; default: 1, full size).')
+    parser.add_argument('--xr-image-scale', type=float, default=0.8,
+                        help='Per-eye camera image scale inside the XR display (0 < scale <= 1; default: 0.8, centered).')
     parser.add_argument('--xr-image-offset-y', type=float, default=0.0,
                         help='Vertical camera-image offset as a fraction of eye height; positive moves down (default: 0). Clamped to keep the full image visible.')
     # basic control parameters

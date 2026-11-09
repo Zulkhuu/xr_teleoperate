@@ -5,6 +5,7 @@ import numpy as np
 
 from teleop.teleop_config import parse_args
 from teleop.utils.realsense_overlay import RealSenseRgbOverlay
+from teleop.utils.xr_hud import prepare_xr_image
 
 
 class RealSenseOverlayTests(unittest.TestCase):
@@ -29,6 +30,22 @@ class RealSenseOverlayTests(unittest.TestCase):
         overlay = RealSenseRgbOverlay(serial='123456', width_fraction=.3)
         np.testing.assert_array_equal(overlay.compose(main), main)
         self.assertEqual(parse_args(['--right-wrist-d405-serial', '123456']).right_wrist_d405_serial, '123456')
+
+    def test_wrist_overlay_stays_inside_scaled_head_view(self):
+        main = np.full((200, 400, 3), 40, dtype=np.uint8)
+        wrist = np.full((50, 100, 3), 180, dtype=np.uint8)
+        overlay = RealSenseRgbOverlay(width_fraction=.25, margin=10)
+        overlay._latest = wrist
+
+        composed = overlay.compose(main)
+        displayed = prepare_xr_image(composed, scale=.8)
+
+        np.testing.assert_array_equal(main, np.full_like(main, 40))
+        self.assertEqual(displayed[0, 0].tolist(), [0, 0, 0])
+        # The wrist view is at the head image's bottom-right, not at the
+        # outer edge of the full XR canvas.
+        self.assertEqual(displayed[150, 300].tolist(), [180, 180, 180])
+        self.assertEqual(displayed[180, 380].tolist(), [0, 0, 0])
 
 
 if __name__ == '__main__':

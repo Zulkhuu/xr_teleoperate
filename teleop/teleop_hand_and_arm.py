@@ -174,9 +174,9 @@ def main(argv=None):
         logger_mp.info("Starting automatic arm/hand safety preparation; no Quest button is required.")
         run_startup_sequence(args, arm_ctrl, end_effector=end_effector)
         logger_mp.info("Initial arm/hand safety preparation complete.")
-        logger_mp.info("Waiting for XR tracking, then release B to set the teleoperation anchor.")
-        logger_mp.info("Quest: B release anchor; hold X (keep pressed 0.5 s) start; Y release record; A pause; hold A exit; L3+R3 damping.")
-        logger_mp.info("Keyboard debugging: r prepare, b anchor, r start, s record, p pause, q exit.")
+        logger_mp.info("Waiting for XR tracking, then hold left grip to follow.")
+        logger_mp.info("Quest: hold left grip follow; release grip freeze arms and fingers; B release re-align; Y release record; A pause; hold A exit; L3+R3 damping.")
+        logger_mp.info("Keyboard debugging: r retry preparation, b anchor, s record, p pause, q exit.")
         if args.display_mode == 'pass-through':
             logger_mp.warning("Pass-through mode has no camera HUD.")
         _runtime = TeleopRuntime(

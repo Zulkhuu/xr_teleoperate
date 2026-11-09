@@ -64,7 +64,8 @@ class QuestControllerInput:
     # TeleVuer uses controller-relative A/B names on both controllers.
     FIELDS = dict(x='left_ctrl_aButton', y='left_ctrl_bButton',
                   a='right_ctrl_aButton', b='right_ctrl_bButton',
-                  l3='left_ctrl_thumbstick', r3='right_ctrl_thumbstick')
+                  l3='left_ctrl_thumbstick', r3='right_ctrl_thumbstick',
+                  grip='left_ctrl_squeeze')
 
     def __init__(self):
         for key in self.FIELDS:
@@ -80,8 +81,10 @@ class QuestControllerInput:
 
     def events(self):
         return Events(pause=self.a.pressed,
-                      anchor=self.b.tap, record=self.y.tap,
-                      start=self.x.long_pressed(START_HOLD_SEC),
+                      record=self.y.tap,
+                      start=self.grip.pressed and self.grip._armed,
+                      prepare=self.x.long_pressed(START_HOLD_SEC),
+                      follow_down=self.grip.is_down,
                       exit=self.a.long_pressed(EXIT_HOLD_SEC),
                       damp=self.l3.is_down and self.r3.is_down,
                       pause_down=self.a.is_down)
@@ -96,6 +99,8 @@ class Events:
     exit: bool = False
     damp: bool = False
     pause_down: bool = False
+    prepare: bool = False
+    follow_down: bool = False
 
 
 class TeleopStateMachine:
@@ -128,8 +133,10 @@ class TeleopStateMachine:
             return
         if event.damp:
             self.anchor = self.anchor_requested = False
-            self.transition(TeleopState.DAMPED, 'Check robot before re-aligning')
+            self.transition(TeleopState.DAMPED, 'Check robot before recovery')
             return
+        if self.state == TeleopState.ACTIVE and not event.follow_down:
+            self.pause('Following stopped; arms and fingers held')
         if event.pause:
             self.pause('Fresh anchor required')
             return
@@ -152,12 +159,12 @@ class TeleopStateMachine:
                 # Initial preparation must still finish before capturing poses.
                 if self.state == TeleopState.DAMPED:
                     self.transition(TeleopState.WAITING_FOR_PREPARATION,
-                                    'Recovery acknowledged; hold X to prepare')
+                                    'Recovery acknowledged; preparation required')
                 return
             self.anchor = False
             self.anchor_requested = True
             if self.state != TeleopState.DAMPED:
-                self.transition(TeleopState.PAUSED, 'Hold controllers still for anchor')
+                self.transition(TeleopState.PAUSED, 'Hold tracked poses still for anchor')
         # The runtime validates IK before committing activation.
         self.record_requested = event.record and self.state == TeleopState.ACTIVE
 

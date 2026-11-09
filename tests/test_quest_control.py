@@ -68,7 +68,7 @@ class ButtonTests(unittest.TestCase):
         buttons.update(data, .7)
         data.right_ctrl_bButton = False
         buttons.update(data, .8)
-        self.assertTrue(buttons.events().anchor)
+        self.assertFalse(buttons.events().anchor)
 
     def test_reconnection_with_held_x_requires_release(self):
         buttons = QuestControllerInput()
@@ -81,7 +81,7 @@ class ButtonTests(unittest.TestCase):
         data.left_ctrl_aButton = True
         buttons.update(data, 3)
         buttons.update(data, 3.5)
-        self.assertTrue(buttons.events().start)
+        self.assertTrue(buttons.events().prepare)
 
 
 class MachineTests(unittest.TestCase):
@@ -152,18 +152,66 @@ class RuntimeTests(unittest.TestCase):
         self.runtime.step()
 
     def anchor(self, now=11):
-        self.step(now, b=True)
+        # Exercise the retained manual anchoring path in hand mode.
+        self.runtime.args.input_mode = 'hand'
+        self.keys.put('b')
+        self.step(now)
         self.assertFalse(self.runtime.machine.anchor)
-        self.step(now + .1, b=False)
         self.step(now + .3)
         self.assertEqual(self.runtime.machine.state, S.ALIGNED)
+        self.runtime.args.input_mode = 'controller'
         self.step(now + .31)
 
     def activate(self, now=12):
-        self.step(now, x=True)
-        self.step(now + .51)
+        self.step(now, grip=False)
+        self.step(now + .51, grip=True)
         self.assertEqual(self.runtime.machine.state, S.ACTIVE)
-        self.step(now + .52, x=False)
+        self.step(now + .52)
+
+    def test_controller_b_and_keyboard_anchor_are_ignored(self):
+        self.step(11, b=True)
+        self.step(11.1, b=False)
+        self.keys.put('b')
+        self.step(11.3)
+        self.assertEqual(self.runtime.machine.state, S.WAITING_FOR_ANCHOR)
+        self.assertFalse(self.runtime.machine.anchor_requested)
+        self.activate()
+
+    def test_hud_hints_match_input_mode(self):
+        for mode in ('controller', 'hand'):
+            for state in S:
+                with self.subTest(mode=mode, state=state), patch('teleop.utils.xr_hud.cv2.putText') as put:
+                    draw_hud(self.raw.copy(), state, True, input_mode=mode)
+                    lines = [call.args[1] for call in put.call_args_list]
+                    if mode == 'controller':
+                        self.assertFalse(any('B:' in line for line in lines))
+                    else:
+                        self.assertFalse(any('GRIP' in line or 'Hold X' in line or 'Hold A' in line or 'Y:' in line for line in lines))
+
+    def test_grip_release_freezes_arms_and_fingers_and_rebases(self):
+        self.activate()
+        self.hands.update.reset_mock()
+        self.step(13, grip=False)
+        self.assertEqual(self.runtime.machine.state, S.PAUSED)
+        held = self.arm.ctrl_dual_arm.call_args.args[0].copy()
+        self.data.left_wrist_pose[0, 3] = 0.4
+        self.step(13.1)
+        np.testing.assert_array_equal(self.arm.ctrl_dual_arm.call_args.args[0], held)
+        self.hands.update.assert_not_called()
+        self.step(14, grip=True)
+        self.assertEqual(self.runtime.machine.state, S.ACTIVE)
+        np.testing.assert_array_equal(self.runtime.xr_anchor[0], self.data.left_wrist_pose)
+
+    def test_grip_release_during_ik_blocks_arm_and_finger_targets(self):
+        self.activate()
+        self.hands.update.reset_mock()
+        def solve(*args):
+            self.data.left_ctrl_squeeze = False
+            return np.full(14, .5), np.zeros(14)
+        self.ik.solve_ik.side_effect = solve
+        self.step(13)
+        self.assertEqual(self.runtime.machine.state, S.PAUSED)
+        self.hands.update.assert_not_called()
 
     def record(self, now=13):
         self.step(now, y=True)
@@ -226,7 +274,7 @@ class RuntimeTests(unittest.TestCase):
         self.arm.ctrl_dual_arm.assert_not_called()
         self.step(14.1, l3=False, r3=False, x=True)
         self.step(15)
-        self.assertEqual(self.runtime.machine.state, S.DAMPED)
+        self.assertEqual(self.runtime.machine.state, S.WAITING_FOR_ANCHOR)
         self.arm.ctrl_dual_arm.assert_not_called()
         self.runtime.damping.Enter_Damp_Mode.assert_called_once()
         self.step(15.1, x=False)
@@ -274,11 +322,11 @@ class RuntimeTests(unittest.TestCase):
                 self.anchor(20)
                 self.ik.last_solve_valid = kind != 'solver'
                 self.ik.solve_ik.return_value = (np.full(14, np.nan if kind == 'nan' else 3.), np.zeros(14))
-                self.step(21, x=True)
+                self.step(21, grip=True)
                 self.step(21.6)
                 self.assertEqual(self.runtime.machine.state, S.PAUSED)
                 self.assertFalse(self.runtime.ever_activated)
-                self.step(21.7, x=False)
+                self.step(21.7, grip=False)
 
     def test_preparation_precedes_anchor_and_tracking(self):
         self.runtime.prepared = False
@@ -358,8 +406,7 @@ class RuntimeTests(unittest.TestCase):
             self.step(13, x=True)
             self.step(13.6)
             prepare.assert_not_called()
-            self.step(14, x=False, b=True)
-            self.step(14.1, b=False)
+            self.step(14, x=False)
             self.assertEqual(self.runtime.machine.state, S.WAITING_FOR_PREPARATION)
             self.assertFalse(self.runtime.machine.anchor)
             self.assertTrue(self.arm.commands_suspended)
@@ -379,6 +426,7 @@ class RuntimeTests(unittest.TestCase):
         self.recorder.save_episode.assert_called_once()
 
     def test_anchor_waits_for_stability_and_keyboard_uses_same_guards(self):
+        self.runtime.args.input_mode = 'hand'
         self.keys.put('r')
         self.step(11)
         self.assertEqual(self.runtime.machine.state, S.WAITING_FOR_ANCHOR)
@@ -391,6 +439,8 @@ class RuntimeTests(unittest.TestCase):
         self.assertTrue(self.runtime.machine.anchor)
         self.keys.put('r')
         self.step(13)
+        self.assertEqual(self.runtime.machine.state, S.ACTIVE)
+        self.step(13.1)
         self.assertEqual(self.runtime.machine.state, S.ACTIVE)
         self.keys.put('p')
         self.step(14)

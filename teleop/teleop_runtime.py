@@ -32,6 +32,7 @@ class TeleopRuntime:
         self.d405 = d405
         self.machine = TeleopStateMachine()
         self.buttons = QuestControllerInput()
+        self.keyboard_follow = False
         self.xr_anchor = self.robot_anchor = None
         self.settle_pose = None
         self.settle_since = None
@@ -74,18 +75,24 @@ class TeleopRuntime:
         if self.keyboard is not None:
             while not self.keyboard.empty():
                 key = self.keyboard.get_nowait()
-                if key == 'b':
+                if key == 'b' and self.args.input_mode == 'hand':
                     event.anchor = True
                 elif key == 'r':
-                    event.start = True
+                    event.prepare = True
+                    if self.args.input_mode == 'hand':
+                        event.start = True
+                        self.keyboard_follow = True
                 elif key == 's':
                     event.record = True
                 elif key == 'p':
                     event.pause = True
+                    self.keyboard_follow = False
                 elif key == 'q':
                     # Keyboard debugging equivalent: pause, then request exit.
                     self.machine.pause('Keyboard exit')
                     event.exit = True
+        if self.args.input_mode == 'hand':
+            event.follow_down = self.keyboard_follow
         q = self.arm.get_current_dual_arm_q()
         dq = self.arm.get_current_dual_arm_dq()
         robot_ready = (q.shape == dq.shape and q.ndim == 1
@@ -95,6 +102,16 @@ class TeleopRuntime:
             np.shape(p) == (4, 4) and np.all(np.isfinite(p))
             for p in (data.left_wrist_pose, data.right_wrist_pose))
         previous = self.machine.state
+        # Recovery acknowledgement never enables motion in the same step.
+        if (self.args.input_mode == 'controller' and previous == TeleopState.DAMPED
+                and event.prepare and tracking and robot_ready
+                and not event.damp and not event.pause_down and not event.pause):
+            self.machine.transition(
+                TeleopState.WAITING_FOR_ANCHOR if self.prepared else TeleopState.WAITING_FOR_PREPARATION,
+                'Recovery acknowledged')
+            event.prepare = event.start = False
+            self.buttons.x.require_release()
+            self.buttons.grip.require_release()
         self.machine.update(event, tracking, robot_ready, prepared=self.prepared)
         if self.machine.state == TeleopState.DAMPED and not self.damping_latched:
             # Application damping, NOT a replacement for the physical G1 E-stop.
@@ -151,6 +168,7 @@ class TeleopRuntime:
         self.machine.anchored()
         # X must begin a new deliberate hold after this anchor is committed.
         self.buttons.x.require_release()
+        self.buttons.grip.require_release()
         # Capturing an anchor never enables the background publisher.
 
     def solve(self, data, q, dq):
@@ -177,7 +195,7 @@ class TeleopRuntime:
         self.machine.transition(TeleopState.PREPARING, 'A: interrupt preparation')
         def check_cancel():
             _, tracking, ready, _, _, event, _ = self.read_operator()
-            self.render(tracking, 'Preparing arms; A pauses')
+            self.render(tracking, 'Preparing arms')
             if (not tracking or not ready or event.pause or event.pause_down
                     or self.machine.state != TeleopState.PREPARING):
                 raise PreparationCancelled
@@ -194,10 +212,11 @@ class TeleopRuntime:
             if self.machine.state not in (TeleopState.DAMPED, TeleopState.EXITING):
                 if self.prepared:
                     self.machine.transition(TeleopState.WAITING_FOR_ANCHOR,
-                                            'Preparation finished; B: set anchor')
+                                            'Preparation finished')
                 else:
-                    self.machine.pause('Preparation interrupted; hold X to retry')
+                    self.machine.pause('Preparation interrupted or failed')
             self.buttons.x.require_release()
+            self.buttons.grip.require_release()
             self.freeze()
 
     def render(self, tracking, reason=None):
@@ -205,16 +224,20 @@ class TeleopRuntime:
             self.head = self.images.get_head_frame()
         if self.local_image and self.head is not None and self.head.bgr is not None:
             # EpisodeWriter continues to receive self.head, whose BGR stays raw.
-            image = prepare_xr_image(
-                self.head.bgr,
-                binocular=self.camera_config['head_camera']['binocular'],
-                scale=getattr(self.args, 'xr_image_scale', 1.0),
-                offset_y=getattr(self.args, 'xr_image_offset_y', 0.0))
+            # Compose before insetting so the wrist view stays inside, and
+            # scales/moves with, the head-camera image. The raw frame used by
+            # the recorder remains untouched.
+            image = self.head.bgr
             if self.d405 is not None:
                 if self.d405.capture_local is False and self.camera_config['right_wrist_camera']['enable_zmq']:
                     wrist = self.images.get_right_wrist_frame()
                     self.d405.update(None if wrist is None else wrist.bgr)
                 image = self.d405.compose(image)
+            image = prepare_xr_image(
+                image,
+                binocular=self.camera_config['head_camera']['binocular'],
+                scale=getattr(self.args, 'xr_image_scale', 0.8),
+                offset_y=getattr(self.args, 'xr_image_offset_y', 0.0))
             draw_hud(image, self.machine.state, tracking,
                      recording=self.machine.recording,
                      elapsed=time.monotonic() - self.record_started,
@@ -222,6 +245,7 @@ class TeleopRuntime:
                      binocular=self.camera_config['head_camera']['binocular'],
                      reason=self.machine.reason if reason is None else reason,
                      preparation_required=not self.prepared,
+                     input_mode=self.args.input_mode,
                      recording_enabled=self.recorder is not None)
             self.xr.render_to_xr(image)
 
@@ -254,7 +278,7 @@ class TeleopRuntime:
 
     def step(self):
         data, tracking, ready, q, dq, event, now = self.read_operator()
-        if (not self.prepared and event.start and tracking and ready
+        if (not self.prepared and event.prepare and tracking and ready
                 and not event.pause_down and not event.pause and not event.anchor
                 and self.machine.state in (TeleopState.WAITING_FOR_PREPARATION,
                                            TeleopState.PAUSED)):
@@ -267,6 +291,22 @@ class TeleopRuntime:
             self.prepare()
             self.render(tracking)
             return
+        # A fresh grip press rebases controller motion onto the held robot pose.
+        # Never acknowledge damping recovery implicitly.
+        if (self.args.input_mode == 'controller'
+                and event.start and event.follow_down and self.prepared and tracking and ready
+                and not event.pause_down and not event.pause and not event.anchor
+                and self.machine.state in (TeleopState.WAITING_FOR_ANCHOR,
+                                           TeleopState.ALIGNED, TeleopState.PAUSED)):
+            poses = (self.ik.get_current_ee_poses(q)
+                     if hasattr(self.ik, 'get_current_ee_poses') else None)
+            if poses is None or all(np.shape(p) == (4, 4) and np.all(np.isfinite(p)) for p in poses):
+                self.xr_anchor = tuple(p.copy() for p in
+                                       (data.left_wrist_pose, data.right_wrist_pose))
+                self.robot_anchor = (tuple(p.copy() for p in poses)
+                                     if poses is not None and not self.args.absolute_wrist_pose
+                                     else None)
+                self.machine.anchored()
         capturing = self.machine.anchor_requested
         if capturing and tracking and ready and not event.pause_down:
             self.capture_anchor(data, q, now)
@@ -281,10 +321,11 @@ class TeleopRuntime:
             event.record = event.record or late_event.record
             valid = valid and tracking and ready
             if not valid:
-                self.machine.pause('IK or tracking invalid; B: re-align')
+                self.machine.pause('IK or tracking invalid')
                 self.freeze()
                 self.stop_recording()
-            elif start and self.machine.state == TeleopState.ALIGNED:
+            elif (start and self.machine.state == TeleopState.ALIGNED
+                  and late_event.follow_down and not late_event.pause_down):
                 if self.prepared and self.machine.activate(valid):
                     self.last_target = q.copy()
                     self.frozen_q = self.frozen_tauff = None

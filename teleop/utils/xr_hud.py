@@ -5,7 +5,7 @@ import numpy as np
 from teleop.utils.quest_control import TeleopState
 
 
-def prepare_xr_image(raw_image, binocular=False, scale=1.0, offset_y=0.0):
+def prepare_xr_image(raw_image, binocular=False, scale=0.8, offset_y=0.0):
     """Inset the complete camera view per eye; positive offset moves it down.
 
     Offset is a fraction of eye height. This changes display pixels, not the
@@ -31,21 +31,32 @@ def prepare_xr_image(raw_image, binocular=False, scale=1.0, offset_y=0.0):
 
 def draw_hud(image, state, tracking, recording=False, elapsed=0, episode=0,
              binocular=False, reason='', recording_enabled=True,
-             preparation_required=False):
+             preparation_required=False, input_mode='controller'):
     white, green, yellow, red = (255, 255, 255), (80, 240, 80), (0, 220, 255), (40, 40, 255)
+    hand = input_mode == 'hand'
+    prepare = 'R: prepare arms' if hand else 'Hold X (0.5s): prepare arms'
+    follow = 'R: follow' if hand else 'Hold LEFT GRIP: follow'
+    pause = 'P: pause' if hand else 'Release LEFT GRIP: pause'
+    exit_hint = 'Q: exit' if hand else 'Hold A (1.5s): exit'
+    record = ('S' if hand else 'Y') + (': stop recording' if recording else ': start recording')
     instructions = {
-        TeleopState.WAITING_FOR_XR: ['Waiting for XR tracking...'],
-        TeleopState.WAITING_FOR_PREPARATION: ['ARM: NOT PREPARED', 'Hold X: initial safety pose', 'Then B: set anchor'],
-        TeleopState.WAITING_FOR_ANCHOR: ['ARM: NOT ALIGNED', 'B: set anchor'],
-        TeleopState.ALIGNED: ['ARM: ALIGNED', 'Hold X to start', 'B: re-align'],
-        TeleopState.PREPARING: ['ARM: PREPARING', 'Safety preparation motion', 'A: pause'],
-        TeleopState.ACTIVE: ['ARM: ACTIVE', 'Y: record' if recording_enabled else 'Recording disabled', 'A: pause'],
-        TeleopState.PAUSED: ['ARM: PAUSED', 'B: re-align, then hold X', 'Hold A: exit'],
-        TeleopState.DAMPED: ['DAMPING / ESTOP', 'Robot control disabled', 'Check robot', 'B: re-align after recovery'],
+        TeleopState.WAITING_FOR_XR: ['WAITING FOR TRACKING / ROBOT DATA'],
+        TeleopState.WAITING_FOR_PREPARATION: ['ARMS NOT PREPARED', prepare],
+        TeleopState.WAITING_FOR_ANCHOR: ['ARMS PREPARED', 'B: set anchor' if hand else follow],
+        TeleopState.ALIGNED: ['ANCHOR SET / READY', follow],
+        TeleopState.PREPARING: ['PREPARING ARMS', 'Moving to initial pose',
+                                'P: interrupt' if hand else 'Press A: interrupt'],
+        TeleopState.ACTIVE: ['TELEOPERATING / RECORDING' if recording else 'TELEOPERATING',
+                             pause, record if recording_enabled else 'Recording unavailable'],
+        TeleopState.PAUSED: ['PAUSED / HOLDING POSE',
+                             'B: set anchor, then R: follow' if hand else follow, exit_hint],
+        TeleopState.DAMPED: ['ARM COMMANDS SUSPENDED', 'Check robot before recovery',
+                             'B: acknowledge recovery' if hand else 'Hold X (0.5s): acknowledge recovery',
+                             exit_hint],
         TeleopState.EXITING: ['Exiting...'],
     }
     if preparation_required:
-        instructions[TeleopState.PAUSED] = ['ARM: PAUSED', 'Hold X: retry preparation', 'Hold A: exit']
+        instructions[TeleopState.PAUSED] = ['PAUSED / PREPARATION REQUIRED', prepare, exit_hint]
     eyes = [image]
     if binocular:
         mid = image.shape[1] // 2
@@ -55,7 +66,7 @@ def draw_hud(image, state, tracking, recording=False, elapsed=0, episode=0,
         # optics/view settings can leave image corners outside the field of view.
         scale = min(0.45, eye.shape[1] / 1000)
         step = max(12, round(24 * scale / 0.45))
-        color = red if state == TeleopState.DAMPED else green if state == TeleopState.ACTIVE else yellow
+        color = red if not tracking or state == TeleopState.DAMPED else green if state == TeleopState.ACTIVE else yellow
         lines = instructions[state][:]
         lines.insert(1, 'TRACKING: OK' if tracking else 'TRACKING: LOST')
         if reason:

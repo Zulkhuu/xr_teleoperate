@@ -337,7 +337,7 @@ Next steps:
 
    <p align="center">  <a href="https://oss-global-cdn.unitree.com/static/2522a83214744e7c8c425cc2679a84ec_670x867.png">    <img src="https://oss-global-cdn.unitree.com/static/2522a83214744e7c8c425cc2679a84ec_670x867.png" alt="Initial Pose" style="width: 25%;">  </a> </p>
 
-8. Startup automatically moves the arms/hands through the safety preparation and reports progress in the terminal. After it completes, **B release** anchors, then **hold X** (keep pressed for 0.5 seconds) starts tracking; see [Quest controls](#quest-controls). Keyboard fallback: **b**, **r**.
+8. Startup automatically moves the arms/hands through the safety preparation and reports progress in the terminal. After it completes, **hold left grip** to follow; release it to freeze arms and fingers; see [Quest controls](#quest-controls). Each grip press captures a fresh relative movement reference.
 
 9. While ACTIVE, release **Y** to start recording; release **Y** again to stop and save. Keyboard fallback: **s**.
 
@@ -526,30 +526,32 @@ Use `--input-mode controller` for Quest 3/3S controllers (the USB backends selec
 
 | Physical button | Action |
 | --- | --- |
-| B release | Set/re-set teleop anchor |
-| Hold X (0.5 s) | Enable/resume arm teleoperation; keep the button continuously pressed for 0.5 seconds |
+| B | Unused in controller mode |
+| Hold left side grip | Follow controller movement; release to freeze arms and fingers |
+| Hold X (0.5 s) | Prepare arms; while damped, acknowledge recovery only |
 | Y release | Start/stop recording, only while ACTIVE and with `--record` |
 | A press | Pause immediately, without home motion |
 | Hold A while paused (1.5 s) | Graceful exit |
 | L3 + R3 | Emergency damping; application latch, not the physical G1 emergency stop |
 
-TeleVuer's left A/B fields mean physical X/Y; its right A/B fields mean physical A/B. B and Y require a completed tap lasting at most 0.7 seconds. B then waits for 0.15 seconds of stable controller poses. Release X before starting a new hold after alignment. Timing and motion limits live in `teleop/utils/quest_control.py`; XR staleness uses `--xr-tracking-timeout` (default 0.5 seconds).
+TeleVuer's left A/B fields mean physical X/Y; its right A/B fields mean physical A/B. Y requires a completed tap lasting at most 0.7 seconds. B has no controller action. Release left grip before enabling following; each new press rebases controller poses onto the held robot pose. Timing and motion limits live in `teleop/utils/quest_control.py`; XR staleness uses `--xr-tracking-timeout` (default 0.5 seconds).
 
-The loop stays live through WAITING_FOR_XR → WAITING_FOR_ANCHOR → ALIGNED → ACTIVE, and while PAUSED or DAMPED. Recording is separate. Pause, tracking loss, invalid IK, and damping finalize the current episode. Tracking recovery never resumes motion automatically: **B release → hold X** is required. Locomotion joystick directions/scales are unchanged, but locomotion commands are only sent while ACTIVE.
+The loop stays live through WAITING_FOR_XR → WAITING_FOR_ANCHOR → ALIGNED → ACTIVE, and while PAUSED or DAMPED. Recording is separate. Pause, tracking loss, invalid IK, and damping finalize the current episode. Tracking recovery never resumes motion automatically: a fresh **left grip press** is required. Locomotion joystick directions/scales are unchanged, but locomotion commands are only sent while ACTIVE.
 
-With the existing hand safety sequence enabled, startup automatically enters the established preparation sequence and reports progress in the terminal; no Quest input is needed. The safety pose target remains the same as the working commit. After it finishes, the HUD prompts **B: set anchor**; release B, then hold X continuously for 0.5 seconds to track. B cannot capture an anchor before preparation completes. A pauses immediately; X is only an activation/resume control. Preparation timeout prevents hand opening. `--disable-hand-safety-sequence` retains its existing meaning and skips preparation.
+With the existing hand safety sequence enabled, startup automatically enters the established preparation sequence and reports progress in the terminal; no Quest input is needed. The safety pose target remains the same as the working commit. After it finishes, the HUD prompts **Hold LEFT GRIP to follow**. Following cannot begin before preparation completes. A pauses immediately; X retries incomplete preparation. Preparation timeout prevents hand opening. `--disable-hand-safety-sequence` retains its existing meaning and skips preparation.
 
-G1-29 pairs the converted XR wrist poses with current robot FK poses using the existing relative transform. Other arm models without FK, hand input, and `--absolute-wrist-pose` retain absolute pose conversion; B still gates activation, but does not provide relative robot EE anchoring. Activation uses a one-second ramp and a joint-target rate limit, retaining controller limits and rejecting failed/nonfinite/out-of-limit IK results.
+G1-29 pairs the converted XR wrist poses with current robot FK poses using the existing relative transform. Other arm models without FK, hand input, and `--absolute-wrist-pose` retain absolute pose conversion; Controller grip still gates following, but does not provide relative robot EE anchoring in absolute mode or without FK. Activation uses a one-second ramp and a joint-target rate limit, retaining controller limits and rejecting failed/nonfinite/out-of-limit IK results.
 
-After damping, check the robot and restore the appropriate robot operating mode externally **before** B re-alignment and X activation. B acknowledges that operator check; software cannot verify it. Arm DDS publishing stays inhibited through re-alignment and resumes only on deliberate activation. A damped exit skips home/release/mode-switch trajectories. Non-G1 models inhibit normal arm publishing but have no verified G1 damping RPC.
+After damping, check the robot and restore the appropriate robot operating mode externally **before** holding X for 0.5 seconds to acknowledge recovery, then making a fresh left grip press. X acknowledges that operator check; software cannot verify it. Arm DDS publishing stays inhibited through re-alignment and resumes only on deliberate activation. A damped exit skips home/release/mode-switch trajectories. Non-G1 models inhibit normal arm publishing but have no verified G1 damping RPC.
 
 The compact OpenCV HUD repeats in each stereo eye and is drawn on a copy; dataset camera pixels stay unchanged. This entry point requires `head_camera.enable_zmq=true` and selects local video instead of WebRTC for the HUD. Pass-through has no camera HUD. TeleVuer internals are unchanged.
 
-The camera view defaults to full size with no vertical offset. HUD status, instructions, and recording information are centered near the bottom of each eye, with a 12% lower margin for headset visibility. Optional `--xr-image-scale` and `--xr-image-offset-y` settings adjust display pixels without changing tracking coordinates; use `--xr-image-scale 1 --xr-image-offset-y 0` for the default full-size view.
+The camera view defaults to 80% scale centered in the XR display, with no vertical offset. HUD status, instructions, and recording information are centered near the bottom of each eye, with a 12% lower margin for headset visibility. Optional `--xr-image-scale` and `--xr-image-offset-y` settings adjust display pixels without changing tracking coordinates; use `--xr-image-scale 1 --xr-image-offset-y 0` for full-size rendering.
 
 The optional right-wrist Intel RealSense D405 RGB overlay starts automatically with
-teleoperation and appears in the bottom-right of the rendered image at 28% of the
-image width. It uses a background capture thread and never blocks the XR loop. Select
+teleoperation and appears in the bottom-right of the head-camera image at 28% of its
+width. It scales and moves with the head view when `--xr-image-scale` or
+`--xr-image-offset-y` changes. It uses a background capture thread and never blocks the XR loop. Select
 a specific camera when multiple RealSense devices are connected:
 
 ```bash
@@ -665,3 +667,7 @@ Use `--xr vuer` (default) for the existing network connection, or
 `--xr vuer_usb` for Quest Browser tracking and robot-camera video over USB/ADB (no separate APK). `--xr meta_quest` is an alias for USB mode. See the
 [XR connection setup guide](docs/xr_connections.md) for USB authorization,
 camera settings, device selection, and launch commands.
+
+### Hand-mode controls
+
+With `--input-mode hand`, the HUD shows keyboard instructions: `r` requests preparation/following, `b` captures an anchor, `p` pauses, `s` toggles recording while active, and `q` exits. Prepare with `r`, set the anchor with `b` while holding hands still, then press `r` again to follow. Following stays enabled until paused or interrupted. Controller B and keyboard `b` anchoring are ignored in controller mode.
