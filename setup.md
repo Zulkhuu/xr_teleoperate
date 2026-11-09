@@ -1,472 +1,348 @@
-# xr_teleoperate Current Configuration and Run Procedure
+# G1 setup and daily operation
 
-This document records the currently working configuration for this Host and this Unitree G1. Instructions in older documentation concerning `pixi`, Dex3, the DFX Inspire bridge, and `teleimager-server --rs` no longer apply to the current setup.
+Use this procedure for G1-29 upper-body teleoperation with Inspire FTP hands
+and Quest controllers. Run host commands from the repository root unless a
+step gives a different directory. Use the paths, interface names, camera
+identifiers, and addresses for your installation.
 
-## 1. Current Hardware and Network
+## 1. Prepare the host environment
 
-### Hardware
+In **each new host terminal**, do these steps before you run a command:
 
-- Robot: Unitree G1 EDU, `G1_29`, locked waist
-- Dexterous hands: Inspire FTP / RH56DFTP, using `--ee=inspire_ftp`
-- Head camera: Intel RealSense D435i, currently used by teleimager through the OpenCV camera path
-- XR: Meta Quest 3S, currently using controller input rather than hand tracking
+1. Go to the repository directory.
+2. Load the G1 environment script with the `source` command.
 
-### Network
+```bash
+cd /path/to/xr_teleoperate
+source /path/to/g1_env.sh
+```
 
-| Device | IP / Interface | Purpose |
+Use the `g1_env.sh` script for your host. The repository does not supply this
+script. The program requires the repository's Python environment and the
+Pinocchio/CasADi and DDS libraries.
+
+The `.envrc` file contains robotpkg environment settings. Keep the additional
+settings from your `g1_env.sh` script.
+
+To install or update dependencies, run:
+
+```bash
+git submodule update --init --recursive
+uv sync --locked
+```
+
+Before you run `uv sync`, put the Unitree Python SDK in
+`../unitree_sdk2_python`. The `pyproject.toml` file uses this location.
+The workspace includes `teleimager`, `televuer`, and dex-retargeting.
+
+After you load the environment, check the imports and network interfaces:
+
+```bash
+uv run python -c "import pinocchio, pinocchio.casadi, casadi, pymodbus, teleimager, televuer, unitree_sdk2py; print('environment OK')"
+ip -br addr
+```
+
+Find the Ethernet interface connected to the robot.
+Set `ROBOT_INTERFACE` to its name. The interface name can differ between hosts.
+
+```bash
+export ROBOT_INTERFACE=eth0  # Replace with your robot-facing interface.
+```
+
+## 2. Network and hardware
+
+This configuration uses these robot network addresses:
+
+| Device | Address | Purpose |
 | --- | --- | --- |
-| Host PC | `eno1 = 192.168.123.222` | Runs the main teleop program; connects to DDS and the hand ModbusTCP interface |
-| G1 PC2 / image server | `192.168.123.164` | Runs teleimager and provides RGB images |
-| G1 robot controller | `192.168.123.161` | Unitree motion / mode service |
-| Inspire FTP left hand | `192.168.123.210:6000` | ModbusTCP |
-| Inspire FTP right hand | `192.168.123.211:6000` | ModbusTCP |
-| Quest 3S | Same Wi-Fi network as the Host | Opens the Vuer page |
+| G1 PC2 / image server | `192.168.123.164` | TeleImager camera streams |
+| G1 robot controller | `192.168.123.161` | Motion and mode services |
+| Left Inspire FTP hand | `192.168.123.210:6000` | Direct ModbusTCP |
+| Right Inspire FTP hand | `192.168.123.211:6000` | Direct ModbusTCP |
 
-Robot SSH:
+1. Set the host address to an unused address on the robot subnet, for example `192.168.123.222/24`.
+2. Check the network connections:
+
+```bash
+ping -c 3 192.168.123.164
+nc -vz 192.168.123.210 6000
+nc -vz 192.168.123.211 6000
+```
+
+Use `--arm G1_29 --ee inspire_ftp`. The FTP hands use direct ModbusTCP.
+They do not require the Inspire DFX bridge.
+
+## 3. Start and check the image server
+
+1. Connect to PC2.
+2. Check if the TeleImager server is running.
+3. If the server is stopped, start it.
+4. Read the server log.
 
 ```bash
 ssh unitree@192.168.123.164
-# Password: 123
-# If prompted after login with ros: foxy(1) noetic(2), choose 1
-```
-
-## 2. Host Environment
-
-The current setup uses `uv` and the repository's `.venv`, not `pixi`.
-
-Common verification commands:
-
-```bash
-cd /home/zuk/xr_teleoperate
-uv run python -c "import pinocchio, casadi, pymodbus, teleimager, televuer, unitree_sdk2py; print('env ok')"
-uv pip list | grep -E 'inspire-sdkpy|teleimager|televuer|unitree-sdk2py|pymodbus'
-```
-
-The current key packages should include:
-
-- `teleimager` editable: `/home/zuk/xr_teleoperate/teleop/teleimager`
-- `televuer` editable: `/home/zuk/xr_teleoperate/teleop/televuer`
-- `inspire-sdkpy` editable: `/home/zuk/inspire_hand_ws/inspire_hand_sdk`
-- `unitree-sdk2py`
-- `pymodbus`
-
-If DDS initialization fails, first confirm the Host's robot-facing network interface name:
-
-```bash
-ip addr show eno1
-```
-
-Normally, you should see `192.168.123.222/24`.
-
-When starting teleop, use:
-
-```bash
---network-interface=eno1
-```
-
-## 3. Start the RGB Image Service
-
-On PC2, the currently stable path is OpenCV mode; do not use `--rs`. Previously, `--rs` failed because `librealsense2.so.2.50` was missing.
-
-Run from the Host:
-
-```bash
-ssh unitree@192.168.123.164
-echo 123 | sudo -S modprobe uvcvideo
-pkill -f teleimager-server || true
+pgrep -af teleimager-server
+# If no server is running:
 nohup ~/.local/bin/teleimager-server > /tmp/teleimager.log 2>&1 &
 tail -f /tmp/teleimager.log
 ```
 
-The normal log should contain something similar to:
+Check the camera configuration on the server.
+The repository file `teleop/teleimager/cam_config_server.yaml` specifies:
 
-```text
-[OpenCVCamera: head_camera] initialized with 480x640 @ 30 FPS
-head_camera is ready
-```
+- UVC binocular head video: `[480, 1280]`, 30 FPS.
+- UVC left and right wrist video: `[480, 640]`, 30 FPS.
+- ZMQ enabled for all three cameras; head ZMQ is required for the camera HUD.
 
-If the RGB feed drops out, first reset the RealSense USB device on PC2, then restart teleimager:
+Set the camera serial numbers or device IDs for your hardware.
+The server configuration can differ from the repository file.
+After you change the server configuration, restart the server.
 
-```bash
-ssh unitree@192.168.123.164
-echo 123 | sudo -S sh -c 'echo 0 > /sys/bus/usb/devices/2-3/authorized; sleep 2; echo 1 > /sys/bus/usb/devices/2-3/authorized'
-pkill -f teleimager-server || true
-nohup ~/.local/bin/teleimager-server > /tmp/teleimager.log 2>&1 &
-tail -f /tmp/teleimager.log
-```
-
-Quickly verify the image from the Host side:
+In a host terminal, load `g1_env.sh`. Then check the camera stream:
 
 ```bash
-cd /home/zuk/xr_teleoperate/teleop
 uv run python - <<'PY'
 import time
 from teleimager.image_client import ImageClient
-c = ImageClient(host="192.168.123.164", request_bgr=True)
-print(c.get_cam_config()["head_camera"])
-time.sleep(0.2)
-img = c.get_head_frame()
-print(None if img is None or img.bgr is None else img.bgr.shape)
-c.close()
+client = ImageClient(host="192.168.123.164", request_bgr=True)
+try:
+    print(client.get_cam_config()["head_camera"])
+    time.sleep(1)
+    frame = client.get_head_frame()
+    print(None if frame is None or frame.bgr is None else frame.bgr.shape)
+finally:
+    client.close()
 PY
 ```
 
-Normal output should include `(480, 640, 3)`.
+The repository stereo configuration produces head frames with shape
+`(480, 1280, 3)`. Check the configuration that the server returns.
 
-## 4. Teleop Startup Commands
+## 4. Connect Quest Browser over Wi-Fi
 
-### 4.1 Recommended: Upper-body teleop while the lower body remains under Unitree's built-in balancing control
+Regular Vuer over Wi-Fi is the main connection method.
 
-This mode is suitable for tabletop manipulation: the robot's lower body remains standing and balanced in Regular/AI mode, and the Quest does not control locomotion.
+1. Connect the Quest and host to the same Wi-Fi network.
+2. Configure the Vuer TLS certificate and key for the host address.
+   Use `XR_TELEOP_CERT` and `XR_TELEOP_KEY`, or
+   `~/.config/xr_teleoperate/cert.pem` and `~/.config/xr_teleoperate/key.pem`.
+3. Start teleoperation with `--xr vuer`. Use the command in section 5.
+4. Open the visit address shown in the terminal in Quest Browser.
+5. Accept the certificate if necessary.
+6. Enter VR.
+7. Give permission for tracking.
 
-Before starting, first confirm that the robot is in Regular/AI mode, meaning Unitree's low-level motion control is still responsible for lower-body balance. Do not use Damping mode, and do not use Debug lowcmd mode by starting without `--motion`.
+The host uses the robot network for DDS and camera streams.
 
-Key points:
+USB is an optional connection method under test. To test it, use
+`--xr vuer_usb` with an authorized USB headset and a certificate for `localhost`.
+See [XR connection details](docs/xr_connections.md) for the USB procedure.
 
-- Use `--motion --upper-body-only`: the upper body is controlled through the arm SDK, while the lower body remains standing under Unitree's built-in controller.
-- Use `--motion` without `--upper-body-only`: the lower body is still balanced by Unitree's built-in controller, but velocity commands come from the Quest controller.
-- Do not use `--motion`: the program calls `Enter_Debug_Mode()`, entering the Debug/SDK lowcmd path. This is not the desired "lower body automatically remains standing" mode.
+## 5. Launch upper-body teleoperation
 
-Then run on the Host:
+1. Set the robot to **Regular/AI mode**. The robot controller must keep the robot balanced.
+2. Clear the workspace. At startup, the program automatically moves the arms to the safety pose and opens the hands.
+3. Open a host terminal.
+4. Load the environment and start the program:
 
 ```bash
-cd /home/zuk/xr_teleoperate/teleop
-uv run python teleop_hand_and_arm.py \
-  --arm=G1_29 \
-  --ee=inspire_ftp \
-  --input-mode=controller \
-  --img-server-ip=192.168.123.164 \
-  --network-interface=enx207bd2c81d8d \
+cd /path/to/xr_teleoperate
+source /path/to/g1_env.sh
+export ROBOT_INTERFACE=eth0  # Replace with your robot-facing interface.
+uv run --directory teleop python teleop_hand_and_arm.py \
+  --xr vuer \
+  --arm G1_29 \
+  --ee inspire_ftp \
+  --input-mode controller \
+  --img-server-ip 192.168.123.164 \
+  --network-interface "$ROBOT_INTERFACE" \
   --motion \
   --upper-body-only
 ```
 
-Explanation:
+The options `--motion --upper-body-only` select arm SDK control.
+The program does not send locomotion velocity commands in this mode.
+Without `--motion`, the program selects Debug/lowcmd control.
 
-- `--motion`: controls the upper limbs through the Unitree arm SDK channel, avoiding whole-body Debug lowcmd mode.
-- `--upper-body-only`: does not send lower-body velocity commands, allowing Unitree's built-in motion/balance module to keep the robot standing.
-- After exit, the program attempts to switch back to AI/remote mode so the physical remote controller can be used again.
+To control locomotion with Quest, remove `--upper-body-only`.
+The left joystick controls forward and lateral velocity.
+The right joystick controls yaw. These commands operate only in the ACTIVE state.
 
-### 4.2 Quest controller locomotion + upper-body teleop
+5. Wait for arm preparation to finish.
+6. Make sure tracking is valid.
+7. Face the forward direction of the robot.
+8. Hold the controllers in a comfortable position.
+9. Follow the instructions on the head-up display (HUD).
 
-If you want to control robot locomotion using the Quest controller, remove `--upper-body-only`:
+| Controller action | Result |
+| --- | --- |
+| Hold left side grip | Set a new reference and follow controller movement |
+| Release left grip | Pause and freeze arms and fingers |
+| Hold X for 0.5 seconds | Prepare the arms if necessary. In the DAMPED state, acknowledge recovery only |
+| B | Unused in controller mode |
+| Tap Y, then release within 0.7 seconds | Start or stop recording in the ACTIVE state with `--record` enabled |
+| Press A | Pause immediately |
+| Hold A for 1.5 seconds while paused | Start the normal shutdown sequence |
+| Press L3 + R3 | Latch application damping |
 
-```bash
-cd /home/zuk/xr_teleoperate/teleop
-uv run python teleop_hand_and_arm.py \
-  --arm=G1_29 \
-  --ee=inspire_ftp \
-  --input-mode=controller \
-  --img-server-ip=192.168.123.164 \
-  --network-interface=enx207bd2c81d8d \
-  --motion
-```
+Release the left grip before you press it again.
+Each new press sets the current robot pose as the reference for controller movement.
+Tracking loss or an invalid inverse kinematics (IK) result pauses motion.
+To continue, release the left grip and press it again.
 
-Locomotion mapping:
+After application damping, do these steps:
 
-- Left joystick forward/backward: `vx`
-- Left joystick left/right: `vy`
-- Right joystick left/right: `yaw`
-- Maximum speed scale: `0.3`
-- Press both thumbsticks simultaneously: send `Damp()`
+1. Check the robot.
+2. Restore the robot operating mode with the external robot controls.
+3. Hold X for 0.5 seconds to acknowledge recovery.
+4. If preparation is incomplete, release X. Hold X again for 0.5 seconds to prepare the arms.
+5. Release the left grip.
+6. Press the left grip to follow controller movement.
 
-Note: this locomotion is not controlled with the physical Unitree remote. Instead, the Quest controller sends commands to the robot through `LocoClientWrapper.Move(vx, vy, vyaw)`.
+Application damping does not replace the physical emergency stop.
 
-## 5. Quest 3S Connection Sequence
+Use these keyboard commands:
 
-Recommended sequence:
+| Key | Function |
+| --- | --- |
+| `p` | Pause |
+| `s` | Start or stop recording |
+| `q` | Start shutdown |
+| `r` | Request preparation in controller mode |
+| `b` | No function in controller mode |
 
-1. Start `teleop_hand_and_arm.py` first.
-2. Open the Vuer page in the Quest browser:
+For `--input-mode hand`, do these steps:
 
-   ```text
-   https://vuer.ai?grid=False
-   ```
+1. Press `r` to prepare the arms.
+2. Hold your hands still.
+3. Press `b` to set the reference.
+4. Press `r` again to follow hand movement.
 
-   Alternatively, use the `Visit: ...` address printed in the terminal.
+In hand mode, following stays active until a pause or interruption occurs.
 
-3. Wait until the page shows `WebSocket connected`.
-4. Select **Virtual Reality** and allow VR permissions.
-5. The operator and the controllers should face toward the robot's forward direction, aligned as closely as possible with the robot's initial orientation.
-6. Return to the Host terminal and press `r` to start.
-7. Press `q` to exit.
+## 6. Camera display and hand behavior
 
-Why enter VR before pressing `r`:
+The default head view is 80% of full size and is centered in each eye.
+For a full-size image, use `--xr-image-scale 1 --xr-image-offset-y 0`.
 
-- After `r` is pressed, the program samples the controllers' current poses and anchors them to the robot's current wrist poses.
-- If the VR session's world-coordinate orientation is incorrect, the robot's hands may twist toward the operator's real-world standing position.
-- The current code uses relative controller wrist poses by default. You can return to the old absolute wrist-pose behavior with `--absolute-wrist-pose`, but this is not recommended.
+The right wrist camera image appears automatically inside the head view.
+Its width is 28% of the head view width.
+It moves and changes size with the head image.
+The program uses the server's right wrist ZMQ stream if it is enabled.
+Otherwise, the program can use a local RealSense camera.
+To select a local camera, use `--right-wrist-d405-serial SERIAL`.
 
-After pressing `r`, the expected terminal log sequence is:
+The HUD and camera overlay do not change recorded camera pixels.
+Pass-through mode has no camera HUD.
 
-```text
-Pre-teleop safety sequence: raise arms to safety pose before opening hands.
-Arm safety pose reached.
-Starting hand controller after arms reached the safety pose.
-[Inspire safety] open both hands.
----------------------start Tracking-------------------------
-```
+During following, each controller trigger opens or closes the related FTP hand.
+Release the left grip to hold both arms and fingers in position.
+At startup, the program raises the arms before it starts hand control and opens the hands.
+Do not use `--disable-hand-safety-sequence` for normal operation.
 
-If you have only started the program and entered VR but have not yet pressed `r`, the hands will not open. This is the current safety logic: during power-on and the waiting stage, the hands remain closed by default so the fingers do not open before the robot has raised its arms.
+To close the hands manually:
 
-## 6. Inspire FTP Hand Open/Close Logic
-
-The current hands are not Dex3 and do not use the DFX bridge. They are Inspire FTP hands controlled directly over ModbusTCP:
-
-- Left hand: `192.168.123.210:6000`
-- Right hand: `192.168.123.211:6000`
-- Register `1486`: angle command
-- Register `1522`: speed
-- Register `1004`: clear error
-
-Binary actions:
-
-- Controller trigger released: open
-- Controller trigger pressed: close
-- Left trigger controls the left hand
-- Right trigger controls the right hand
-
-Current target values:
-
-```text
-open  = [1, 1, 1, 1, 1, 1]  -> [1000, 1000, 1000, 1000, 1000, 1000]
-close = [0, 0, 0, 0, 0, 1]  -> [0, 0, 0, 0, 0, 1000]
-```
-
-These are position state / angle commands, not acceleration values. After contacting an object, the hand will continue trying to reach the close target. There is currently no tactile- or force-feedback-based automatic slowdown or automatic hold logic.
-
-Hand safety sequence:
-
-- After power-on: the hands should remain closed to protect the fingers.
-- While the program is waiting for `r`: the hand controller is not started by default, so the hands will not open early.
-- After pressing `r`: first raise both arms to a safe pose, then start the hand controller and open the hands.
-- After pressing `q`: first hold the current pose, return to the safe pose, close the hands, slowly return to the startup pose, and finally release the arm SDK.
-
-Do not add the following option to the normal teleop startup command:
+1. Go to the repository root.
+2. Load `g1_env.sh`.
+3. Run this command:
 
 ```bash
---disable-hand-safety-sequence
-```
-
-This option skips the current safety procedure of "raise the arms before opening the hands, and close the hands first during shutdown."
-
-To manually close both hands:
-
-```bash
-cd /home/zuk/xr_teleoperate
 uv run python teleop/utils/inspire_ftp_close_hands.py
 ```
 
-If the hands do not respond, check in this order:
+## 7. Recording
+
+To record local episodes, add these options to the start command:
 
 ```bash
-ping 192.168.123.210
-ping 192.168.123.211
-nc -vz 192.168.123.210 6000
-nc -vz 192.168.123.211 6000
-cd /home/zuk/xr_teleoperate
-uv run python teleop/utils/inspire_ftp_close_hands.py
+--record --recording-backend episode \
+--task-dir ../records \
+--task-name g1_inspire_teleop \
+--task-goal "Manipulate an object with Inspire FTP hands"
 ```
 
-## 7. Exit Safety Logic
+With `--directory teleop`, the path `../records` selects the repository's
+`records` directory.
 
-The current `q` shutdown sequence has been changed to prevent the arms from suddenly dropping:
+1. Hold the left grip to follow controller movement.
+2. Tap Y to start recording.
+3. Keep the left grip pressed during the episode.
+4. Tap Y again to save the episode.
 
-1. Hold the current teleop arm pose, default `0.8s`.
-2. Return slowly to the safety pose, using default velocity `--arm-safety-velocity=0.8`.
-3. Hold the safety pose, default `1.0s`.
-4. Close both hands.
-5. With `--motion`, use the SDK to slowly return the arms to the standing arm pose recorded when the program started, using default `--exit-lower-velocity=0.35`.
-6. Hold the final pose, default `1.0s`.
-7. Slowly release the arm SDK over `--exit-release-duration=12.0`.
-8. Switch back to AI/remote mode.
+A pause, grip release, tracking loss, invalid IK result, damping, or exit ends
+and saves the active episode.
 
-If lowering is still too fast, add this when starting:
+The episode recorder saves these data:
+
+- Raw head images, with a separate image for each eye in stereo mode.
+- Wrist images from enabled ZMQ streams.
+- Arm states and targets.
+- Hand states and actions.
+
+Body data depends on the locomotion mode. The default sample rate is 30 Hz.
+The episode recorder does not save depth, torque, raw Quest poses, or tactile data.
+
+To use Neuracore:
+
+1. Go to the repository root.
+2. Load `g1_env.sh`.
+3. Install the separate recording environment:
 
 ```bash
---exit-lower-velocity=0.2 --exit-release-duration=18
+uv sync --project integrations/neuracore --python 3.10
 ```
 
-If you only want to debug and do not want the arms to return to the startup pose when exiting:
+4. Add these options to the teleoperation command:
 
 ```bash
---disable-exit-lower
+--record --recording-backend neuracore --neuracore-dataset "G1 Teleoperation"
 ```
 
-## 8. Data Recording
+Neuracore login runs in the terminal before robot initialization and arm preparation.
+Neuracore requires head ZMQ. Enable wrist ZMQ to record wrist images.
+Neuracore records all 29 measured G1 joint positions and velocities.
+It also records the 14 arm position targets.
+These data are also recorded in upper-body-only mode.
+See the [recording documentation](README.md#recording-backends) for more information.
 
-Add `--record` and task information when starting:
+## 8. Shutdown and troubleshooting
+
+To start normal shutdown, hold A for 1.5 seconds while paused, or press keyboard `q`.
+Wait for the shutdown sequence to finish.
+
+During normal shutdown, the program does these steps:
+
+1. Holds the current pose.
+2. Moves the arms to the safety pose.
+3. Closes the hands.
+4. Lowers the arms to the startup pose in motion mode.
+5. Releases arm SDK control.
+6. Tries to restore AI/remote mode.
+
+After damping, shutdown does not move the arms home, release SDK control, or switch the robot mode.
+
+To decrease the lowering speed and increase the release time, add:
 
 ```bash
-cd /home/zuk/xr_teleoperate/teleop
-uv run python teleop_hand_and_arm.py \
-  --arm=G1_29 \
-  --ee=inspire_ftp \
-  --input-mode=controller \
-  --img-server-ip=192.168.123.164 \
-  --network-interface=eno1 \
-  --motion \
-  --upper-body-only \
-  --record \
-  --task-dir=/home/zuk/xr_teleoperate/records \
-  --task-name=g1_inspire_teleop_test \
-  --task-goal="teleoperate G1 with Inspire FTP hand" \
-  --task-desc="Quest controller teleoperation with RGB observation" \
-  --task-steps="start teleop; manipulate object; save episode"
+--exit-lower-velocity 0.2 --exit-release-duration 18
 ```
 
-Recording workflow:
+| Problem | Action |
+| --- | --- |
+| Import or shared-library error | Load `g1_env.sh` in the same terminal. Repeat the import check in section 1. |
+| DDS initialization error | Run `ip -br addr`. Check the robot connection and `--network-interface`. |
+| Black headset video | Read `/tmp/teleimager.log` on PC2. Check head ZMQ. Run the image check in section 3. |
+| USB video connection error | Check ADB authorization, the localhost URL, and certificate trust. |
+| Incorrect controller alignment | Release the grip. Face forward. Position the controllers. Press the grip to set a new reference. |
+| Hands do not move | Check both ModbusTCP connections and the preparation logs. Hand control starts after the arms reach the safety pose. |
+| Physical remote does not operate after exit | Wait for SDK release and the AI/remote mode change. Use external robot controls to restore Regular/AI mode if necessary. |
 
-- Press `r` to start teleop.
-- Press `s` to start recording.
-- Press `s` again to save the current episode.
-- Press `q` to exit.
+For the optional USB test, check tracking and video without robot commands:
 
-By default, data is saved to:
-
-```text
-/home/zuk/xr_teleoperate/records/<task-name>/episode_0000/
-```
-
-Currently recorded data:
-
-- `colors/color_0`: head RGB, 30 Hz, `640x480`
-- `states.left_arm/right_arm.qpos`: current left/right arm joint states
-- `actions.left_arm/right_arm.qpos`: IK output target joints
-- `states.left_ee/right_ee.qpos`: hand state arrays
-- `actions.left_ee/right_ee.qpos`: hand open/close actions
-- In full locomotion mode: `actions.body.qpos = [vx, vy, vyaw]`
-- In full locomotion mode: `states.body.qpos` is the 35-dimensional whole-body motor qpos
-
-Currently not recorded:
-
-- depth
-- wrist camera
-- torque
-- qvel
-- raw Quest pose
-- tactile data
-
-Recording frequency:
-
-```text
---frequency defaults to 30.0 Hz
-1 step = 1 / 30 = 0.033333 s
-```
-
-## 9. Common Issues
-
-### 9.1 CycloneDDS interface error at startup
-
-Confirm the network interface name:
+1. Go to the repository root.
+2. Load `g1_env.sh`.
+3. Run this command:
 
 ```bash
-ip addr
-```
-
-`eno` is incorrect. The current Host should use:
-
-```bash
---network-interface=eno1
-```
-
-If you see:
-
-```text
-/tmp/cdds.LOG: cannot open for writing
-```
-
-this is generally not the main cause. The real problem is usually an incorrect DDS interface selection or a permissions/environment issue.
-
-### 9.2 Black screen in VR after starting RGB
-
-First confirm that PC2 teleimager is outputting the OpenCV head camera:
-
-```bash
-ssh unitree@192.168.123.164
-tail -50 /tmp/teleimager.log
-```
-
-Then use the Host-side Python verification from Section 3 and confirm that it can retrieve an image with shape `(480, 640, 3)`.
-
-### 9.3 Arms twist toward where the operator is standing immediately after pressing `r`
-
-The usual cause is that the Quest/OpenXR world-coordinate orientation and the robot coordinate orientation are not aligned. When entering Virtual Reality, the operator and controllers should face the robot's forward direction, and only then should `r` be pressed.
-
-The current code anchors the initial controller poses to the robot's current wrist poses, which is already more stable than the old absolute-pose method.
-
-### 9.4 Hands do not move
-
-The current hands are FTP hands, so there is no need to run a DFX bridge on PC2. First check the network and ports:
-
-```bash
-ping 192.168.123.210
-ping 192.168.123.211
-nc -vz 192.168.123.210 6000
-nc -vz 192.168.123.211 6000
-```
-
-Then test manual closing:
-
-```bash
-cd /home/zuk/xr_teleoperate
-uv run python teleop/utils/inspire_ftp_close_hands.py
-```
-
-If the hands do not open after pressing `r`, first check whether the terminal contains these logs:
-
-```text
-Starting hand controller after arms reached the safety pose.
-[Inspire_Controller_FTP] Using direct ModbusTCP control ...
-[Inspire_Controller_FTP] Connected left FTP hand at 192.168.123.210:6000.
-[Inspire_Controller_FTP] Connected right FTP hand at 192.168.123.211:6000.
-[Inspire safety] open both hands.
-```
-
-If there is no `Connected ... FTP hand` message, the problem is with the hands' network, power, or port.
-
-If `open both hands` appears but the hands do not move, use the manual close/open test script or check whether the hands are already in the open state.
-
-### 9.5 Physical remote controller does not recover after exit
-
-After `q` is pressed, the program releases the arm SDK and calls `Exit_Debug_Mode()` to switch back to AI/remote mode. Wait for these logs:
-
-```text
-release arm sdk mode OK
-Switch to AI/remote mode: Success
-```
-
-If the physical remote still cannot be used, manually switch the robot back to Regular/AI mode using the Unitree app or remote controller.
-
-## 10. Current Recommended Startup Templates
-
-Daily upper-body teleop:
-
-```bash
-cd /home/zuk/xr_teleoperate/teleop
-uv run python teleop_hand_and_arm.py \
-  --arm=G1_29 \
-  --ee=inspire_ftp \
-  --input-mode=controller \
-  --img-server-ip=192.168.123.164 \
-  --network-interface=eno1 \
-  --motion \
-  --upper-body-only \
-  --exit-lower-velocity=0.2 \
-  --exit-release-duration=18
-```
-
-When Quest-controller locomotion is required:
-
-```bash
-cd /home/zuk/xr_teleoperate/teleop
-uv run python teleop_hand_and_arm.py \
-  --arm=G1_29 \
-  --ee=inspire_ftp \
-  --input-mode=controller \
-  --img-server-ip=192.168.123.164 \
-  --network-interface=eno1 \
-  --motion \
-  --exit-lower-velocity=0.2 \
-  --exit-release-duration=18
+uv run python -m teleop.check_xr --stereo
 ```
